@@ -5,46 +5,52 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Portfolio World v3.0</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#020408;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;overflow:hidden;font-family:'Press Start 2P',monospace}
-#wrap{position:relative;user-select:none}
-#titlebar{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;color:#00FF41;font-size:6.5px;letter-spacing:.08em;border-bottom:1px solid rgba(0,255,65,.12);margin-bottom:4px}
-#gameCanvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;border:2px solid #00FF41;box-shadow:0 0 50px rgba(0,255,65,.25),0 0 100px rgba(0,255,65,.08)}
-#ctrlbar{display:flex;gap:18px;flex-wrap:wrap;padding:7px 12px;color:#333;font-size:5.5px;border-top:1px solid rgba(0,255,65,.08);margin-top:4px}
-.ch{display:flex;align-items:center;gap:5px}
-.kbd{background:#0e0e0e;border:1px solid #252525;border-bottom:2px solid #080808;padding:2px 5px;border-radius:2px;color:#555;font-size:5.5px;font-family:'Press Start 2P',monospace}
-#modal{display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);align-items:center;justify-content:center;z-index:20;opacity:0;transition:opacity .3s}
+body{background:linear-gradient(160deg,#eef1fb 0%,#f6f0fc 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;overflow:hidden;font-family:'Nunito',system-ui,sans-serif;color:#222a3d}
+#wrap{position:relative;user-select:none;background:#fff;border-radius:22px;box-shadow:0 18px 50px rgba(40,52,90,.16);padding:12px}
+#titlebar{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 8px 10px;font-size:15px;font-weight:900}
+#titlebar .ttl{letter-spacing:-.3px}
+#zoneLabel{color:#6d6bf6;font-weight:800;font-size:13px}
+#posLabel{color:#9aa2b4;font-weight:800;font-size:13px}
+#gameCanvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;border-radius:14px;border:1px solid #e7eaf2;box-shadow:0 8px 24px rgba(40,52,90,.12)}
+#ctrlbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:12px 6px 4px;color:#6b7488;font-size:13px;font-weight:700}
+.ch{display:flex;align-items:center;gap:6px}
+.kbd{background:#f5f7fb;border:1px solid #e2e6f0;border-bottom:2px solid #d7dcea;padding:3px 9px;border-radius:8px;color:#4a5163;font-size:12px;font-weight:800;font-family:inherit}
+.importbtn{margin-left:auto;color:#6d6bf6;text-decoration:none;border:1.5px solid #d9d8fb;background:#f3f3ff;padding:8px 16px;border-radius:999px;font-weight:800;font-size:13px;transition:.15s}
+.importbtn:hover{background:#6d6bf6;color:#fff;border-color:#6d6bf6}
+#modal{display:none;position:absolute;inset:0;background:rgba(28,32,54,.55);backdrop-filter:blur(3px);align-items:center;justify-content:center;z-index:20;opacity:0;transition:opacity .25s;border-radius:22px}
 #modal.open{display:flex;opacity:1}
-.mbox{background:#070710;border:2px solid var(--accent,#00FF41);box-shadow:0 0 50px var(--glow,rgba(0,255,65,.35));padding:22px 26px;width:700px;max-height:90%;overflow-y:auto;transform:scale(.95);transition:transform .3s}
-.open .mbox{transform:scale(1)}
-.mbox::-webkit-scrollbar{width:3px}.mbox::-webkit-scrollbar-thumb{background:var(--accent,#00FF41)}
-.mtitle{color:var(--accent,#00FF41);font-size:9px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
-.msubtitle{color:var(--accent-dim,#007a18);font-size:5.5px;margin-bottom:18px;opacity:.7}
-.mblink{width:7px;height:7px;background:var(--accent,#00FF41);display:inline-block;animation:bl 1s steps(1) infinite;flex-shrink:0}
-@keyframes bl{0%,49%{opacity:1}50%,100%{opacity:0}}
-.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
-.pc{background:#0c0c14;border:1px solid #181828;padding:14px;cursor:pointer;transition:border-color .2s,transform .2s}
-.pc:hover{border-color:var(--accent,#00FF41);transform:translateY(-2px)}
-.pnum{font-size:5.5px;color:var(--accent,#00FF41);margin-bottom:5px}
-.ptyp{font-size:4.5px;background:var(--accent,#00FF41);color:#000;padding:2px 5px;display:inline-block;margin-bottom:8px}
-.pname{font-size:7.5px;color:#eee;margin-bottom:6px;line-height:1.5}
-.pdesc{font-size:4.5px;color:#4a4a5a;line-height:1.9;margin-bottom:8px}
-.ptags{display:flex;flex-wrap:wrap;gap:4px}
-.ptag{font-size:3.5px;border:1px solid var(--tag-border,rgba(0,255,65,.3));color:var(--tag-color,#007a18);padding:2px 4px}
-.plink{display:inline-block;margin-top:8px;font-size:4px;color:var(--accent,#00FF41);text-decoration:none;border-bottom:1px solid var(--accent,#00FF41);word-break:break-all}
-.mclose{background:none;border:1px solid #1a1a1a;color:#333;font-family:'Press Start 2P',monospace;font-size:5.5px;padding:9px 16px;cursor:pointer;transition:all .2s;float:right;margin-top:8px}
-.mclose:hover{border-color:var(--accent,#00FF41);color:var(--accent,#00FF41)}
-#loading{position:absolute;top:0;left:0;right:0;bottom:0;background:#020408;display:flex;align-items:center;justify-content:center;z-index:50;color:#00FF41;font-size:8px;font-family:'Press Start 2P',monospace}
+.mbox{background:#fff;border-radius:20px;border-top:6px solid var(--accent,#6d6bf6);box-shadow:0 24px 60px rgba(20,24,45,.45);padding:26px 28px;width:680px;max-width:92%;max-height:88%;overflow-y:auto;transform:translateY(12px) scale(.98);transition:transform .25s}
+.open .mbox{transform:none}
+.mbox::-webkit-scrollbar{width:8px}.mbox::-webkit-scrollbar-thumb{background:#d7dcea;border-radius:8px}
+.mtitle{color:var(--accent-dim,#4a4f63);font-size:24px;font-weight:900;margin-bottom:3px;display:flex;align-items:center;gap:11px;letter-spacing:-.3px}
+.mdot{width:13px;height:13px;border-radius:50%;background:var(--accent,#6d6bf6);flex-shrink:0}
+.msubtitle{color:#9aa2b4;font-size:13px;font-weight:700;margin-bottom:22px}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.pc{background:#f7f8fc;border:1px solid #e7eaf2;border-radius:14px;padding:18px;transition:border-color .18s,transform .18s,box-shadow .18s}
+.pc:hover{border-color:var(--accent,#6d6bf6);transform:translateY(-2px);box-shadow:0 10px 24px rgba(40,52,90,.10)}
+.pnum{font-size:12px;color:#9aa2b4;font-weight:800;margin-bottom:7px}
+.ptyp{font-size:11px;font-weight:800;background:var(--accent-dim,#6d6bf6);color:#fff;padding:4px 11px;border-radius:999px;display:inline-block;margin-bottom:11px}
+.pname{font-size:17px;font-weight:800;color:#222a3d;margin-bottom:9px;line-height:1.35}
+.pdesc{font-size:13.5px;color:#5b6377;line-height:1.65;margin-bottom:11px;font-weight:600}
+.ptags{display:flex;flex-wrap:wrap;gap:7px}
+.ptag{font-size:11.5px;font-weight:700;border:1px solid #e2e6f0;background:#fff;color:#5b6377;padding:4px 11px;border-radius:999px}
+.plink{display:inline-block;margin-top:12px;font-size:12.5px;font-weight:800;color:#fff;background:var(--accent-dim,#6d6bf6);text-decoration:none;padding:8px 15px;border-radius:999px;word-break:break-all}
+.mclose{background:#f5f7fb;border:1.5px solid #e2e6f0;color:#4a5163;font-family:inherit;font-weight:800;font-size:13px;padding:11px 20px;border-radius:999px;cursor:pointer;transition:.15s;float:right;margin-top:8px}
+.mclose:hover{background:#222a3d;color:#fff;border-color:#222a3d}
+#loading{position:absolute;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:50;color:#6d6bf6;font-size:16px;font-weight:800;font-family:inherit;border-radius:22px}
 </style>
 </head>
 <body>
 <div id="wrap">
   <div id="titlebar">
-    <span>◉ PORTFOLIO.WORLD v3.0</span>
-    <span id="zoneLabel">ZONA: MAPPA PRINCIPALE</span>
-    <span id="posLabel">POS: (0,0)</span>
+    <span class="ttl">🗺️ Portfolio World</span>
+    <span id="zoneLabel">Mappa principale</span>
+    <span id="posLabel">(0,0)</span>
   </div>
   <canvas id="gameCanvas" width="820" height="500"></canvas>
   <div id="ctrlbar">
@@ -52,10 +58,10 @@ body{background:#020408;display:flex;flex-direction:column;align-items:center;ju
     <span class="ch"><span class="kbd">↑↓←→</span>Muovi</span>
     <span class="ch"><span class="kbd">E</span>Entra</span>
     <span class="ch"><span class="kbd">ESC</span>Chiudi</span>
-    <a href="cv-builder.html" style="margin-left:auto;color:#007a18;text-decoration:none;border:1px solid rgba(0,255,65,.2);padding:3px 7px">★ IMPORTA CV</a>
+    <a class="importbtn" href="cv-builder.html">✨ Crea il tuo</a>
   </div>
   <div id="modal"><div class="mbox" id="modalContent"></div></div>
-  <div id="loading">CARICAMENTO ASSETS...</div>
+  <div id="loading">Caricamento…</div>
 </div>
 <script>
 const canvas=document.getElementById('gameCanvas');
@@ -620,15 +626,15 @@ function openModal(bi){
   modal.style.setProperty('--glow',`rgba(${b.colorRgb},.35)`);
   modal.style.setProperty('--tag-border',`rgba(${b.colorRgb},.3)`);
   modal.style.setProperty('--tag-color',b.colorDim);
-  let h=`<div class="mtitle"><span class="mblink"></span>${b.name}</div>`;
-  h+=`<div class="msubtitle">// ARCHIVIO PROGETTI COMMISSIONATI</div><div class="pgrid">`;
+  let h=`<div class="mtitle"><span class="mdot"></span>${b.name}</div>`;
+  h+=`<div class="msubtitle">Premi ESC o "Chiudi" per tornare alla mappa</div><div class="pgrid">`;
   b.projects.forEach(p=>{
     const linkHtml=p.link?`<a class="plink" href="${p.link}" target="_blank" rel="noopener">↗ ${p.link.replace(/^https?:\/\/(www\.)?/,'').slice(0,40)}</a>`:'';
     h+=`<div class="pc"><div class="pnum">// ${p.num}</div><span class="ptyp">${p.type}</span>
     <div class="pname">${p.name}</div><div class="pdesc">${p.desc}</div>
     <div class="ptags">${p.tags.map(t=>`<span class="ptag">${t}</span>`).join('')}</div>${linkHtml}</div>`;
   });
-  h+=`</div><button class="mclose" onclick="closeModal()">[ ESC ] CHIUDI</button>`;
+  h+=`</div><button class="mclose" onclick="closeModal()">Chiudi</button>`;
   modalC.innerHTML=h;modalOpen=true;modal.classList.add('open');doShake();
 }
 function closeModal(){modalOpen=false;modal.classList.remove('open');}
@@ -661,10 +667,10 @@ function update(dt){
   Object.keys(justP).forEach(k=>delete justP[k]);
   updateCam();
   const ptx=Math.floor(player.x/TILE),pty=Math.floor(player.y/TILE);
-  document.getElementById('posLabel').textContent=`POS: (${ptx},${pty})`;
-  let zone='MAPPA PRINCIPALE';
+  document.getElementById('posLabel').textContent=`(${ptx},${pty})`;
+  let zone='Mappa principale';
   for(const b of buildings)if(ptx>=b.x-1&&ptx<=b.x+b.w&&pty>=b.y-1&&pty<=b.y+b.h+2){zone=b.name;break;}
-  document.getElementById('zoneLabel').textContent='ZONA: '+zone;
+  document.getElementById('zoneLabel').textContent=zone;
 }
 
 // ═══ RENDER ═══
