@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CV → Portfolio World</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<!-- Librerie gratuite (MIT) per estrarre testo da PDF e DOCX lato browser -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--g:#00FF41;--gd:#007a18;--bg:#020408;--pan:#070710;--bd:#181828}
+body{background:var(--bg);color:#cdd;font-family:'Press Start 2P',monospace;min-height:100vh;padding:24px;font-size:11px;line-height:1.7}
+a{color:var(--g)}
+.wrap{max-width:1040px;margin:0 auto}
+h1{color:var(--g);font-size:15px;margin-bottom:6px;text-shadow:0 0 12px rgba(0,255,65,.4)}
+.sub{color:var(--gd);font-size:8px;margin-bottom:22px;opacity:.8}
+.step{background:var(--pan);border:1px solid var(--bd);border-left:3px solid var(--g);padding:16px 18px;margin-bottom:18px}
+.step h2{color:var(--g);font-size:10px;margin-bottom:12px;display:flex;gap:8px;align-items:center}
+.step h2 .n{background:var(--g);color:#000;padding:2px 6px;font-size:9px}
+.btn{font-family:inherit;font-size:9px;background:#0c0c14;color:var(--g);border:1px solid var(--gd);padding:9px 14px;cursor:pointer;transition:.15s}
+.btn:hover{background:var(--g);color:#000}
+.btn.sm{font-size:8px;padding:6px 9px}
+.btn.warn{color:#ff6b6b;border-color:#5a1a1a}
+.btn.warn:hover{background:#ff6b6b;color:#000}
+.btn.big{font-size:12px;padding:14px 22px;width:100%;margin-top:8px}
+#drop{border:2px dashed var(--gd);padding:26px;text-align:center;color:var(--gd);font-size:9px;cursor:pointer;transition:.15s}
+#drop.over{border-color:var(--g);color:var(--g);background:rgba(0,255,65,.05)}
+#status{font-size:8px;color:#889;margin-top:10px;min-height:14px}
+textarea{width:100%;background:#05050a;color:#9db;border:1px solid var(--bd);font-family:inherit;font-size:8px;line-height:1.8;padding:10px;resize:vertical}
+.row{background:#0c0c14;border:1px solid var(--bd);padding:12px;margin-bottom:10px;position:relative}
+.row.education{border-left:3px solid #00D4FF}
+.row.work{border-left:3px solid #00FF41}
+.row.project{border-left:3px solid #FF41E0}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.fld.full{grid-column:1/-1}
+.fld label{font-size:7px;color:var(--gd)}
+.fld input,.fld select,.fld textarea{background:#05050a;color:#cdd;border:1px solid var(--bd);font-family:inherit;font-size:8px;padding:7px}
+.fld textarea{min-height:46px;line-height:1.7}
+.rowtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.badge{font-size:7px;padding:3px 7px;color:#000}
+.badge.education{background:#00D4FF}.badge.work{background:#00FF41}.badge.project{background:#FF41E0}
+.del{background:none;border:1px solid #5a1a1a;color:#ff6b6b;font-family:inherit;font-size:7px;padding:4px 8px;cursor:pointer}
+.del:hover{background:#ff6b6b;color:#000}
+.adds{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.muted{color:#556;font-size:8px}
+.hint{color:var(--gd);font-size:7px;margin-top:6px;opacity:.75}
+details summary{cursor:pointer;color:var(--gd);font-size:8px;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>◉ CV → PORTFOLIO.WORLD</h1>
+  <div class="sub">// carica il tuo curriculum, controlla i dati, genera il tuo mondo esplorabile</div>
+
+  <!-- STEP 1: UPLOAD -->
+  <div class="step">
+    <h2><span class="n">1</span> CARICA IL CURRICULUM</h2>
+    <div id="drop">TRASCINA QUI il PDF / DOCX<br>oppure <u>clicca per scegliere</u></div>
+    <input type="file" id="file" accept=".pdf,.docx" style="display:none">
+    <div id="status"></div>
+    <details style="margin-top:12px">
+      <summary>▸ Testo estratto (modificabile)</summary>
+      <textarea id="rawText" rows="8" placeholder="Il testo del CV apparirà qui. Puoi anche incollarlo a mano."></textarea>
+      <button class="btn sm" id="reparse" style="margin-top:8px">↻ Ri-analizza testo</button>
+    </details>
+  </div>
+
+  <!-- STEP 2: FORM -->
+  <div class="step">
+    <h2><span class="n">2</span> CONTROLLA LE ESPERIENZE</h2>
+    <p class="muted">Ogni voce diventerà un edificio nella mappa. Correggi liberamente.</p>
+    <div id="entries" style="margin-top:12px"></div>
+    <div class="adds">
+      <button class="btn sm" data-add="education">+ Studi</button>
+      <button class="btn sm" data-add="work">+ Lavoro</button>
+      <button class="btn sm" data-add="project">+ Progetto</button>
+      <button class="btn sm warn" id="clearAll">✕ Svuota</button>
+    </div>
+    <div class="hint">Blu = studi · Verde = lavoro · Magenta = progetti</div>
+  </div>
+
+  <!-- STEP 3: GENERA -->
+  <div class="step">
+    <h2><span class="n">3</span> GENERA IL MONDO</h2>
+    <button class="btn big" id="generate">▶ GENERA E VAI ALLA MAPPA</button>
+    <button class="btn big" id="shareLink" style="margin-top:8px;color:#00D4FF;border-color:#00D4FF">🔗 CREA LINK CONDIVISIBILE</button>
+    <div id="shareBox" style="display:none;margin-top:12px;background:#0c0c14;border:1px solid #181828;padding:12px">
+      <div class="muted" style="margin-bottom:8px">Chiunque apra questo link vedrà il <b>tuo</b> mondo (i dati viaggiano dentro il link, niente server):</div>
+      <input id="shareUrl" readonly style="width:100%;background:#05050a;color:#00D4FF;border:1px solid #0f3460;font-family:inherit;font-size:7px;padding:8px;margin-bottom:8px">
+      <div class="adds">
+        <button class="btn sm" id="copyShare">⧉ Copia link</button>
+        <a class="btn sm" id="openShare" href="#" target="_blank" style="text-decoration:none">↗ Apri in nuova scheda</a>
+        <span id="copyMsg" class="muted" style="align-self:center;color:#00FF41"></span>
+      </div>
+    </div>
+    <div class="adds" style="margin-top:10px">
+      <button class="btn sm" id="exportJson">⤓ Esporta JSON</button>
+      <button class="btn sm" id="loadDemo">↺ Carica dati demo</button>
+      <a class="btn sm" href="portfolio-map.html" style="text-decoration:none">→ Apri mappa attuale</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// pdf.js worker (CDN)
+if(window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+const $=s=>document.querySelector(s);
+const statusEl=$('#status'), entriesEl=$('#entries'), rawEl=$('#rawText');
+const setStatus=t=>statusEl.textContent=t;
+
+// ═══════════ ESTRAZIONE TESTO DA FILE ═══════════
+async function extractText(file){
+  const name=file.name.toLowerCase();
+  if(name.endsWith('.pdf')){
+    const buf=await file.arrayBuffer();
+    const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+    let out=[];
+    for(let i=1;i<=pdf.numPages;i++){
+      const page=await pdf.getPage(i);
+      const tc=await page.getTextContent();
+      // Ricostruisce le righe raggruppando per coordinata Y
+      const rows={};
+      tc.items.forEach(it=>{
+        const y=Math.round(it.transform[5]);
+        (rows[y]=rows[y]||[]).push(it.str);
+      });
+      Object.keys(rows).map(Number).sort((a,b)=>b-a).forEach(y=>out.push(rows[y].join(' ')));
+    }
+    return out.join('\n');
+  }
+  if(name.endsWith('.docx')){
+    const buf=await file.arrayBuffer();
+    const res=await mammoth.extractRawText({arrayBuffer:buf});
+    return res.value;
+  }
+  throw new Error('Formato non supportato: usa PDF o DOCX');
+}
+
+async function handleFile(file){
+  if(!file)return;
+  setStatus('Estrazione testo da "'+file.name+'"...');
+  try{
+    const text=await extractText(file);
+    rawEl.value=text;
+    setStatus('✓ Testo estratto ('+text.length+' caratteri). Analisi in corso...');
+    const parsed=parseCV(text);
+    render(parsed);
+    setStatus('✓ Trovate '+parsed.length+' voci. Controllale qui sotto.');
+  }catch(err){
+    setStatus('✕ '+err.message);
+    console.error(err);
+  }
+}
+
+// ═══════════ PARSING EURISTICO (best-effort, l'utente corregge) ═══════════
+// Parole che identificano un'INTESTAZIONE di sezione (non un titolo di voce!)
+const KW={
+  education:['education','istruzione','formazione','studi','training','academic'],
+  work:['esperienz','work experience','employment','lavoro','impiego','carriera','occupazione','work history','volunteering','volontariato','professional experience'],
+  project:['projects','progetti','portfolio','realizzazioni'],
+  skip:['about me','about','profilo','sommario','summary','skills','competenze','language','lingue','lingua','hobby','interess','interests','contatti','contact','referenze','references','patente','driving','dati personali','personal']
+};
+// Parole nel CONTENUTO che suggeriscono il tipo (per CV senza sezioni nette)
+const EDU_HINT=/\b(laurea|diploma|università|universita|master|dottorato|bachelor|degree|scuola|liceo|istituto|perito|maturità|maturita|phd)\b/i;
+const PROJ_HINT=/\b(progetto|project|applicazione|sito web|portfolio|open[- ]?source|hackathon)\b/i;
+const YEAR_G=/\b(19|20)\d{2}\b/g;
+const PRESENT=/\b(oggi|attuale|attualmente|present|current|in corso|tutt'?ora|ad oggi|ongoing|presente)\b/i;
+const MONTH='gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre|gen|feb|mar|apr|mag|giu|lug|ago|set|sett|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec';
+// Riga che contiene una data: anno, gg/mm/aaaa, mm/aaaa o nome di mese
+const DATELINE=new RegExp('\\b(19|20)\\d{2}\\b|\\b\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.\\-]\\d{2,4}\\b|\\b\\d{1,2}[\\/.\\-](19|20)\\d{2}\\b|\\b('+MONTH+')\\b','i');
+const CONTACT=/(@|tel\.?|cell\.?|telefono|phone|\+?\d[\d\s().-]{8,}|c\.f\.|p\.?\s?iva|linkedin|curriculum vitae|nat[oa]\s|date of birth|place of birth|nationality|residen|indirizzo|home\s*:)/i;
+const CITY=/^\s*(city|citt[àa]|luogo|place|sede)\s*[:：]/i;
+const linkRe=/https?:\/\/[^\s)]+/ig;
+
+// Mantiene i run di 2+ spazi (in Europass separano i campi sulla stessa riga)
+function cleanLine(l){return l.replace(/\t/g,' ').replace(/^[•▪●◦⁃∙·‣*>»\-–—\s]+/,'').replace(/ {4,}/g,'   ').replace(/\s+$/,'');}
+function splitCols(l){return l.split(/\s{2,}/).map(t=>t.trim()).filter(Boolean);}
+function linkOf(s){const m=String(s).match(/https?:\/\/[^\s)]+/i);return m?m[0].replace(/[.,;]+$/,''):'';}
+
+function classifyHeader(line){
+  const l=line.toLowerCase().replace(/[:•\-–—\[\]]/g,' ').replace(/\s+/g,' ').trim();
+  if(line.length>45)return null;            // i titoli di sezione sono corti
+  if(CONTACT.test(line) && !/skills|language|competenze|lingue/i.test(line)) return null;
+  for(const k of ['skip','education','project','work']) if(KW[k].some(w=>l.includes(w))) return k;
+  return null;
+}
+
+function datesOf(line){
+  const years=line.match(YEAR_G)||[];
+  let end=''; if(PRESENT.test(line)) end='Oggi'; else if(years.length>1) end=years[years.length-1];
+  return {start:years[0]||'', end};
+}
+function stripDates(s){
+  return s.replace(/\[[^\]]*\]/g,' ')
+    .replace(/\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}/g,' ')
+    .replace(/\d{1,2}[\/.\-](19|20)\d{2}/g,' ')
+    .replace(YEAR_G,' ').replace(PRESENT,' ')
+    .replace(new RegExp('\\b('+MONTH+')\\b','ig'),' ')
+    .replace(/[–—|]+/g,' ').replace(/\s{2,}/g,' ')
+    .replace(/^[\s,\-–—|:]+|[\s,\-–—|:]+$/g,'').trim();
+}
+
+function parseCV(text){
+  const lines=text.split(/\r?\n/).map(cleanLine).filter(l=>l.length>1);
+  const sections=[]; let cur=null;
+  lines.forEach(line=>{
+    const k=classifyHeader(line);
+    if(k){ cur={kind:k,lines:[]}; sections.push(cur); }
+    else { if(!cur){cur={kind:'_pre',lines:[]};sections.push(cur);} cur.lines.push(line); }
+  });
+  const recognized=sections.some(s=>s.kind!=='_pre' && s.kind!=='skip');
+  const out=[];
+  sections.forEach(sec=>{
+    if(sec.kind==='skip') return;
+    if(sec.kind==='_pre'){ if(!recognized) parseGeneric(sec.lines,'work',out); return; }
+    if(sec.kind==='project') parseProjects(sec.lines,out);
+    else parseDated(sec.lines, sec.kind, out);
+  });
+  return out.length?out:[blankEntry('work')];
+}
+
+// Voci con date (istruzione/lavoro). Gestisce sia "titolo sopra, ente+data" (Europass)
+// sia "data da sola, dettagli sotto".
+function parseDated(L, kind, out){
+  const dateIdx=[]; for(let i=0;i<L.length;i++) if(DATELINE.test(L[i])) dateIdx.push(i);
+  if(!dateIdx.length){ parseGeneric(L, kind, out); return; }
+  dateIdx.forEach((d,di)=>{
+    const prevD=di>0?dateIdx[di-1]:-1, nextD=di<dateIdx.length-1?dateIdx[di+1]:L.length;
+    const {start,end}=datesOf(L[d]);
+    const orgOnDate=stripDates(L[d]);
+    // "Titolo-sopra" solo se il testo sulla riga-data sembra un ente (≥2 parole o lungo),
+    // non una semplice città/luogo (es. "Pompei")
+    const titleFirst = /[A-Za-zÀ-ÿ]/.test(orgOnDate) && (orgOnDate.split(/\s+/).length>=2 || orgOnDate.length>=10);
+    let organization='', title='', location='', desc=[];
+    if(titleFirst){
+      organization=orgOnDate;
+      if(d-1>prevD && d-1>=0 && !DATELINE.test(L[d-1])) title=L[d-1];
+      const nextTF = nextD<L.length && !DATELINE.test(stripDates(L[nextD])) && /[A-Za-zÀ-ÿ]{2,}/.test(stripDates(L[nextD]));
+      const nextTextLen = nextD<L.length?stripDates(L[nextD]).split(/\s+/).length:0;
+      const stop = (nextTF && nextTextLen>=2) ? nextD-1 : nextD;  // riserva la riga-titolo della voce successiva
+      for(let j=d+1;j<stop;j++){
+        if(CITY.test(L[j])){ location=L[j].replace(CITY,'').replace(/\s{2,}/g,' ').trim(); continue; }
+        desc.push(...splitCols(L[j]));
+      }
+    } else {
+      // DATA-DA-SOLA: l'eventuale testo sulla riga-data è un luogo; ente/titolo sotto
+      if(orgOnDate && orgOnDate.length<=24) location=orgOnDate;
+      const below=[];
+      for(let j=d+1;j<nextD;j++){
+        if(CITY.test(L[j])){ location=L[j].replace(CITY,'').replace(/\s{2,}/g,' ').trim(); continue; }
+        below.push(...splitCols(L[j]));
+      }
+      const shortOnes=below.filter(l=>l.length<=55 && !CONTACT.test(l));
+      organization=shortOnes[0]||below[0]||'';
+      title=shortOnes[1]||'';
+      const used=new Set([organization,title].filter(Boolean));
+      desc=below.filter(l=>!used.has(l));
+    }
+    desc=desc.filter(l=>{ if(CITY.test(l)){ location=l.replace(CITY,'').trim(); return false; } return true; });
+    if(!location){ const cm=organization.split(','); if(cm.length===2 && cm[1].trim().length<=24 && !/\d/.test(cm[1])){ location=cm[1].trim(); organization=cm[0].trim(); } }
+    const description=desc.filter(l=>!CONTACT.test(l)).join(' ').trim();
+    if(!organization && !title) return;
+    out.push({kind, organization, title, location, start, end, description, tags:[], link:''});
+  });
+}
+
+// Fallback generico (CV senza sezioni / senza struttura chiara)
+function parseGeneric(L, defKind, out){
+  let blocks=[], b=null;
+  L.forEach(line=>{ if(DATELINE.test(line)){ if(b)blocks.push(b); b=[line]; } else if(b) b.push(line); else b=[line]; });
+  if(b)blocks.push(b);
+  blocks.forEach(block=>{
+    const dateLine=block.find(l=>DATELINE.test(l))||'';
+    if(defKind==='work' && !dateLine) return;
+    const {start,end}=datesOf(dateLine);
+    const cleaned=stripDates(dateLine);
+    const candidates=[cleaned,...block.filter(l=>l!==dateLine)].filter(Boolean);
+    const shortOnes=candidates.filter(l=>l.length<=55 && !CONTACT.test(l));
+    let organization=shortOnes[0]||candidates[0]||'', title=shortOnes[1]||'', location='';
+    const cm=organization.split(','); if(cm.length===2 && cm[1].trim().length<=24 && !/\d/.test(cm[1])){ location=cm[1].trim(); organization=cm[0].trim(); }
+    const used=new Set([organization,title].filter(Boolean));
+    const description=candidates.filter(l=>!used.has(l)&&!CONTACT.test(l)).join(' ');
+    if(!organization && !title) return;
+    let k=defKind; const blob=block.join(' ');
+    if(EDU_HINT.test(blob)) k='education'; else if(PROJ_HINT.test(blob)) k='project';
+    out.push({kind:k, organization, title, location, start, end, description, tags:[], link:linkOf(blob)});
+  });
+}
+
+// Progetti: niente date. Ogni progetto = "Titolo — Categoria  Descrizione ... Stack: ...  Link: ..."
+// Confine affidabile: la riga "Link:" chiude un progetto. Un nuovo titolo (con —) apre il
+// successivo solo se quello corrente è già "completo" (ha Stack o Link) → così i trattini
+// DENTRO la descrizione non spezzano il progetto.
+function parseProjects(L, out){
+  const isLink=l=>/link\s*[:：]/i.test(l) || /https?:\/\//i.test(l);
+  const looksTitle=l=>/[—–]/.test(l) && l.length>20;
+  let blocks=[], cur=[];
+  L.forEach(line=>{
+    const curComplete = cur.some(x=>/stack\s*[:：]|tecnolog|technolog/i.test(x)) || cur.some(isLink);
+    if(cur.length && looksTitle(line) && curComplete){ blocks.push(cur); cur=[]; }
+    cur.push(line);
+    if(isLink(line)){ blocks.push(cur); cur=[]; }
+  });
+  if(cur.length)blocks.push(cur);
+  blocks.forEach(block=>{
+    const text=block.join(' ').replace(/\s{2,}/g,' ').trim();
+    const link=linkOf(text);
+    let tags=[], body=text;
+    const stackM=text.match(/(stack|tecnolog\w*|technolog\w*)\s*[:：]\s*([\s\S]*?)(?:\s*link\s*[:：]|$)/i);
+    if(stackM){
+      tags=stackM[2].replace(linkRe,'').split(/[,/]|\se\s/i).map(t=>t.trim().replace(/\.$/,'')).filter(t=>t && t.length<=24).slice(0,14);
+      body=text.slice(0, stackM.index);
+    }
+    body=body.replace(/\s*link\s*[:：][\s\S]*$/i,'').replace(linkRe,'').trim();
+    let name=body, description='';
+    const dash=body.search(/\s[—–]\s/);
+    if(dash>=0){ name=body.slice(0,dash).trim(); description=body.slice(dash).replace(/^\s*[—–]\s*/,'').trim(); }
+    name=name.replace(/\s{2,}/g,' ').trim();
+    if(!name && !description) return;
+    out.push({kind:'project', organization:name.slice(0,80), title:'', location:'', start:'', end:'', description, tags, link});
+  });
+}
+
+// ═══════════ RENDER FORM ═══════════
+const KIND_LABEL={education:'STUDI',work:'LAVORO',project:'PROGETTO'};
+const FIELDS={
+  default:{org:'Ente / Azienda',title:'Titolo / Ruolo',tags:'Competenze / Tag (separati da virgola)'},
+  project:{org:'Nome del progetto',title:'Categoria (facoltativa)',tags:'Tecnologie (separate da virgola)'}
+};
+function blankEntry(kind){return {kind,organization:'',title:'',location:'',start:'',end:'',description:'',tags:[],link:''};}
+
+function render(entries){
+  entriesEl.innerHTML='';
+  entries.forEach(e=>entriesEl.appendChild(rowEl(e)));
+  if(!entries.length)entriesEl.innerHTML='<p class="muted">Nessuna voce. Aggiungine una qui sotto.</p>';
+}
+
+function rowEl(e){
+  const div=document.createElement('div');
+  div.className='row '+e.kind;
+  div.dataset.kind=e.kind;
+  const isProj=e.kind==='project';
+  const F=isProj?FIELDS.project:FIELDS.default;
+  const kindSel=`<div class="fld"><label>Tipo</label><select data-f="kind">
+      <option value="education"${e.kind==='education'?' selected':''}>Studi</option>
+      <option value="work"${e.kind==='work'?' selected':''}>Lavoro</option>
+      <option value="project"${e.kind==='project'?' selected':''}>Progetto</option>
+    </select></div>`;
+  const locField=isProj?'':`<div class="fld"><label>Luogo</label><input data-f="location" value="${esc(e.location)}"></div>`;
+  const dateFields=isProj?'':`
+      <div class="fld"><label>Inizio</label><input data-f="start" value="${esc(e.start)}" placeholder="2019"></div>
+      <div class="fld"><label>Fine</label><input data-f="end" value="${esc(e.end)}" placeholder="2022 / Oggi"></div>`;
+  const linkField=`<div class="fld full"><label>Link${isProj?' (GitHub / URL)':' (facoltativo)'}</label><input data-f="link" value="${esc(e.link||'')}" placeholder="https://github.com/..."></div>`;
+  div.innerHTML=`
+    <div class="rowtop">
+      <span class="badge ${e.kind}">${KIND_LABEL[e.kind]}</span>
+      <button class="del">✕ rimuovi</button>
+    </div>
+    <div class="grid">
+      <div class="fld"><label>${F.org}</label><input data-f="organization" value="${esc(e.organization)}"></div>
+      <div class="fld"><label>${F.title}</label><input data-f="title" value="${esc(e.title)}"></div>
+      ${locField}
+      ${kindSel}
+      ${dateFields}
+      ${linkField}
+      <div class="fld full"><label>Descrizione</label><textarea data-f="description">${esc(e.description)}</textarea></div>
+      <div class="fld full"><label>${F.tags}</label><input data-f="tags" value="${esc((e.tags||[]).join(', '))}"></div>
+    </div>`;
+  div.querySelector('.del').onclick=()=>div.remove();
+  div.querySelector('[data-f="kind"]').onchange=ev=>{
+    const updated=readRow(div); updated.kind=ev.target.value;
+    div.replaceWith(rowEl(updated));   // ricostruisce la riga coi campi giusti per il tipo
+  };
+  return div;
+}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// Legge i valori di una singola riga del form
+function readRow(div){
+  const g=f=>{const el=div.querySelector(`[data-f="${f}"]`);return el?el.value.trim():'';};
+  return {
+    kind:g('kind')||div.dataset.kind||'work',
+    organization:g('organization'), title:g('title'), location:g('location'),
+    start:g('start'), end:g('end'), description:g('description'), link:g('link'),
+    tags:g('tags').split(',').map(t=>t.trim()).filter(Boolean)
+  };
+}
+function collect(){ return [...entriesEl.querySelectorAll('.row')].map(readRow).filter(e=>e.organization||e.title); }
+
+// ═══════════ EVENTI ═══════════
+const fileInput=$('#file'), drop=$('#drop');
+drop.onclick=()=>fileInput.click();
+fileInput.onchange=e=>handleFile(e.target.files[0]);
+['dragover','dragenter'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>handleFile(e.dataTransfer.files[0]));
+
+$('#reparse').onclick=()=>{const p=parseCV(rawEl.value);render(p);setStatus('✓ Ri-analizzate '+p.length+' voci dal testo.');};
+document.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>entriesEl.appendChild(rowEl(blankEntry(b.dataset.add))));
+$('#clearAll').onclick=()=>{if(confirm('Svuotare tutte le voci?'))entriesEl.innerHTML='';};
+$('#loadDemo').onclick=()=>{localStorage.removeItem('pw_experiences');render(DEMO);setStatus('✓ Caricati i dati demo.');};
+
+$('#generate').onclick=()=>{
+  const data=collect();
+  if(!data.length){setStatus('✕ Aggiungi almeno una voce con un ente o un titolo.');return;}
+  localStorage.setItem('pw_experiences',JSON.stringify(data));
+  location.href='portfolio-map.html';
+};
+
+// ═══════════ LINK CONDIVISIBILE (dati compressi dentro l'URL) ═══════════
+function b64urlEncode(s){return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function encodeData(data){
+  const json=JSON.stringify(data);
+  if(window.LZString) return 'lz='+LZString.compressToEncodedURIComponent(json); // link corto
+  return 'p='+b64urlEncode(json);                                               // fallback offline
+}
+$('#shareLink').onclick=()=>{
+  const data=collect();
+  if(!data.length){setStatus('✕ Aggiungi almeno una voce prima di creare il link.');return;}
+  const url=new URL('portfolio-map.html', location.href);
+  url.hash=encodeData(data);
+  const link=url.href;
+  $('#shareUrl').value=link;
+  $('#openShare').href=link;
+  $('#shareBox').style.display='block';
+  $('#copyMsg').textContent='';
+  if(navigator.clipboard) navigator.clipboard.writeText(link).then(()=>{$('#copyMsg').textContent='✓ copiato negli appunti!';},()=>{});
+  $('#shareBox').scrollIntoView({behavior:'smooth',block:'center'});
+};
+$('#copyShare').onclick=()=>{
+  const i=$('#shareUrl'); i.select(); i.setSelectionRange(0,99999);
+  if(navigator.clipboard) navigator.clipboard.writeText(i.value);
+  else document.execCommand('copy');
+  $('#copyMsg').textContent='✓ copiato!';
+};
+$('#exportJson').onclick=()=>{
+  const blob=new Blob([JSON.stringify(collect(),null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='portfolio-experiences.json';a.click();
+};
+
+// Dati demo / stato iniziale
+const DEMO=[
+  {kind:'education',organization:'Politecnico di Milano',title:'Laurea in Ingegneria Informatica',location:'Milano',start:'2016',end:'2019',description:'Focus su algoritmi, sistemi distribuiti e ingegneria del software.',tags:['Algoritmi','Java','Database']},
+  {kind:'education',organization:'ITIS G. Galilei',title:'Diploma Perito Informatico',location:'Roma',start:'2011',end:'2016',description:'Diploma tecnico in informatica e telecomunicazioni.',tags:['C','HTML','SQL']},
+  {kind:'work',organization:'Nexus Digital',title:'Full-Stack Developer',location:'Milano',start:'2019',end:'2022',description:'Sviluppo di piattaforme gestionali ed e-commerce per clienti enterprise.',tags:['React','Node.js','PostgreSQL']},
+  {kind:'work',organization:'Aurora Tech',title:'Backend Engineer',location:'Remote',start:'2022',end:'Oggi',description:'Architetture a microservizi e dashboard real-time.',tags:['Go','Kubernetes','gRPC']},
+  {kind:'project',organization:'Explainable AI for MRI',title:'Deep Learning',location:'',start:'',end:'',description:'CNN in PyTorch per classificare immagini MRI con metodi di explainability (Grad-CAM, LIME).',tags:['Python','PyTorch','LIME','OpenCV'],link:'https://github.com/uidcenzom/Explainable-AI-for-Multiple-Sclerosis-Detection-in-MRI-FLAIR-Images.git'}
+];
+// Pre-carica eventuali dati già salvati, altrimenti la demo
+(function init(){
+  let start=DEMO;
+  try{const raw=localStorage.getItem('pw_experiences');if(raw){const p=JSON.parse(raw);if(Array.isArray(p)&&p.length)start=p;}}catch(e){}
+  render(start);
+})();
+</script>
+</body>
+</html>

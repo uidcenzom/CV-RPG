@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Map Editor - Portfolio World</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
+
+/* ── LEFT: TILESET PALETTE ── */
+#palette{width:280px;background:#16213e;border-right:2px solid #0f3460;display:flex;flex-direction:column;overflow:hidden}
+#palette h2{padding:10px;font-size:13px;color:#00FF41;border-bottom:1px solid #0f3460;flex-shrink:0}
+#sheetSelect{margin:8px;padding:6px;background:#0a0f1e;color:#eee;border:1px solid #0f3460;font-size:12px}
+#sheetContainer{flex:1;overflow:auto;padding:4px;position:relative}
+#sheetCanvas{cursor:crosshair;image-rendering:pixelated;display:block;margin:0 auto}
+#selectionInfo{padding:6px 10px;font-size:10px;color:#aaa;border-top:1px solid #0f3460;flex-shrink:0}
+#tilePreview{display:flex;align-items:center;gap:8px;padding:6px 10px;border-top:1px solid #0f3460;flex-shrink:0}
+#tilePreview canvas{border:1px solid #00FF41;image-rendering:pixelated}
+#tilePreview span{font-size:10px;color:#ccc}
+
+/* ── CENTER: MAP CANVAS ── */
+#center{flex:1;display:flex;flex-direction:column;overflow:hidden}
+#toolbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#0a0f1e;border-bottom:1px solid #0f3460;flex-shrink:0;flex-wrap:wrap}
+#toolbar button,#toolbar select{padding:5px 10px;background:#16213e;color:#eee;border:1px solid #0f3460;cursor:pointer;font-size:11px;border-radius:3px}
+#toolbar button:hover,#toolbar button.active{background:#0f3460;color:#00FF41;border-color:#00FF41}
+#toolbar label{font-size:11px;color:#aaa}
+#toolbar input[type=number]{width:50px;padding:4px;background:#0a0f1e;color:#eee;border:1px solid #0f3460;font-size:11px}
+#mapWrap{flex:1;overflow:auto;position:relative;background:#0a0a15}
+#mapCanvas{image-rendering:pixelated;cursor:crosshair}
+#statusBar{padding:5px 12px;font-size:10px;color:#888;background:#0a0f1e;border-top:1px solid #0f3460;flex-shrink:0}
+
+/* ── RIGHT: LAYERS ── */
+#layers{width:220px;background:#16213e;border-left:2px solid #0f3460;display:flex;flex-direction:column;overflow:hidden}
+#layers h2{padding:10px;font-size:13px;color:#00FF41;border-bottom:1px solid #0f3460}
+#layerList{flex:1;overflow:auto;padding:8px}
+.layer-item{display:flex;align-items:center;gap:6px;padding:6px 8px;margin-bottom:4px;background:#0a0f1e;border:1px solid #0f3460;border-radius:3px;cursor:pointer;font-size:11px}
+.layer-item.active{border-color:#00FF41;color:#00FF41}
+.layer-item .vis{cursor:pointer;font-size:14px}
+#layerActions{padding:8px;border-top:1px solid #0f3460}
+#layerActions button{width:100%;padding:6px;margin-bottom:4px;background:#0a0f1e;color:#eee;border:1px solid #0f3460;cursor:pointer;font-size:11px;border-radius:3px}
+#layerActions button:hover{border-color:#00FF41;color:#00FF41}
+
+/* Export panel */
+#exportPanel{padding:8px;border-top:1px solid #0f3460}
+#exportPanel button{width:100%;padding:8px;background:#00FF41;color:#000;border:none;cursor:pointer;font-size:12px;font-weight:bold;border-radius:3px;margin-bottom:4px}
+#exportPanel button:hover{background:#00cc33}
+#exportPanel button.secondary{background:#0a0f1e;color:#eee;border:1px solid #0f3460}
+#exportPanel button.secondary:hover{border-color:#00FF41;color:#00FF41}
+</style>
+</head>
+<body>
+
+<!-- LEFT PALETTE -->
+<div id="palette">
+  <h2>TILESET PALETTE</h2>
+  <select id="sheetSelect"></select>
+  <div id="sheetContainer">
+    <canvas id="sheetCanvas"></canvas>
+  </div>
+  <div id="selectionInfo">Seleziona un tile dal foglio</div>
+  <div id="tilePreview">
+    <canvas id="previewCanvas" width="64" height="64"></canvas>
+    <span id="previewText">Nessun tile</span>
+  </div>
+</div>
+
+<!-- CENTER MAP -->
+<div id="center">
+  <div id="toolbar">
+    <button id="btnPen" class="active" title="Penna (B)">🖌 Penna</button>
+    <button id="btnRect" title="Rettangolo (R)">▭ Rect</button>
+    <button id="btnFill" title="Riempi (G)">🪣 Fill</button>
+    <button id="btnErase" title="Gomma (E)">✕ Gomma</button>
+    <span style="color:#333">|</span>
+    <label>Griglia:</label>
+    <input type="number" id="gridW" value="48" min="8" max="200" title="Larghezza mappa">
+    <span style="color:#555">×</span>
+    <input type="number" id="gridH" value="30" min="8" max="200" title="Altezza mappa">
+    <button id="btnResize">Ridimensiona</button>
+    <span style="color:#333">|</span>
+    <button id="btnUndo" title="Ctrl+Z">↩ Undo</button>
+    <button id="btnRedo" title="Ctrl+Y">↪ Redo</button>
+    <span style="color:#333">|</span>
+    <label>Zoom:</label>
+    <button id="zoomOut">-</button>
+    <span id="zoomLabel">2x</span>
+    <button id="zoomIn">+</button>
+    <span style="color:#333">|</span>
+    <label>
+      <input type="checkbox" id="showGrid" checked> Griglia
+    </label>
+    <label>
+      <input type="checkbox" id="showCollision"> Collisioni
+    </label>
+  </div>
+  <div id="mapWrap">
+    <canvas id="mapCanvas"></canvas>
+  </div>
+  <div id="statusBar">Pronto</div>
+</div>
+
+<!-- RIGHT LAYERS -->
+<div id="layers">
+  <h2>LAYERS</h2>
+  <div id="layerList"></div>
+  <div id="layerActions">
+    <button id="btnAddLayer">+ Aggiungi Layer</button>
+    <button id="btnDelLayer">- Rimuovi Layer</button>
+    <button id="btnUpLayer">↑ Sposta Su</button>
+    <button id="btnDownLayer">↓ Sposta Giù</button>
+  </div>
+  <div id="exportPanel">
+    <button id="btnExport">ESPORTA JSON</button>
+    <button id="btnImport" class="secondary">Importa JSON</button>
+    <button id="btnGenCode" class="secondary">Genera Codice Gioco</button>
+    <button id="btnTestGame" style="background:#0f3460;color:#00D4FF;border:1px solid #00D4FF;margin-top:8px">▶ TESTA NEL GIOCO</button>
+    <input type="file" id="importFile" accept=".json" style="display:none">
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// MAP EDITOR - Portfolio World
+// ═══════════════════════════════════════════
+
+const TILE = 16; // source tile size in spritesheets
+
+// ── All available spritesheets ──
+const SHEETS = [
+  { name: 'Floors', path: 'tiles/Environment/Tilesets/Floors_Tiles.png' },
+  { name: 'Water', path: 'tiles/Environment/Tilesets/Water_tiles.png' },
+  { name: 'Walls (tileset)', path: 'tiles/Environment/Tilesets/Wall_Tiles.png' },
+  { name: 'Wall Variations', path: 'tiles/Environment/Tilesets/Wall_Variations.png' },
+  { name: 'Dungeon Tiles', path: 'tiles/Environment/Tilesets/Dungeon_Tiles.png' },
+  { name: 'Building Walls', path: 'tiles/Environment/Structures/Buildings/Walls.png' },
+  { name: 'Building Roofs', path: 'tiles/Environment/Structures/Buildings/Roofs.png' },
+  { name: 'Building Props', path: 'tiles/Environment/Structures/Buildings/Props.png' },
+  { name: 'Building Floors', path: 'tiles/Environment/Structures/Buildings/Floors.png' },
+  { name: 'Vegetation', path: 'tiles/Environment/Props/Static/Vegetation.png' },
+  { name: 'Rocks', path: 'tiles/Environment/Props/Static/Rocks.png' },
+  { name: 'Trees M01 S03', path: 'tiles/Environment/Props/Static/Trees/Model_01/Size_03.png' },
+  { name: 'Trees M02 S03', path: 'tiles/Environment/Props/Static/Trees/Model_02/Size_03.png' },
+  { name: 'Trees M03 S03', path: 'tiles/Environment/Props/Static/Trees/Model_03/Size_03.png' },
+  { name: 'Trees M01 S04', path: 'tiles/Environment/Props/Static/Trees/Model_01/Size_04.png' },
+  { name: 'Trees M01 S05', path: 'tiles/Environment/Props/Static/Trees/Model_01/Size_05.png' },
+  { name: 'Furniture', path: 'tiles/Environment/Props/Static/Furniture.png' },
+  { name: 'Farm', path: 'tiles/Environment/Props/Static/Farm.png' },
+  { name: 'Bonfire', path: 'tiles/Environment/Structures/Stations/Bonfire/Bonfire.png' },
+  { name: 'Anvil', path: 'tiles/Environment/Structures/Stations/Anvil/Anvil.png' },
+  { name: 'Shadows', path: 'tiles/Environment/Structures/Buildings/Shadows.png' },
+];
+
+// ── State ──
+let mapW = 48, mapH = 30;
+let zoom = 2;
+let tool = 'pen'; // pen, rect, fill, erase
+let showGrid = true, showCollision = false;
+let activeLayerIdx = 0;
+let currentSheet = null;
+let selection = null; // {sheetIdx, sx, sy, sw, sh} in source pixels
+let painting = false;
+let rectStart = null;
+let undoStack = [], redoStack = [];
+
+// Layers: each layer has { name, visible, data: 2D array of cells }
+// Each cell is null or { sheet: sheetIndex, sx, sy, sw, sh, collision: bool }
+let layers = [
+  makeLayer('Terreno'),
+  makeLayer('Oggetti'),
+  makeLayer('Dettagli'),
+];
+
+function makeLayer(name) {
+  const data = [];
+  for (let y = 0; y < mapH; y++) {
+    data[y] = [];
+    for (let x = 0; x < mapW; x++) data[y][x] = null;
+  }
+  return { name, visible: true, data };
+}
+
+function resizeLayer(layer, nw, nh) {
+  const nd = [];
+  for (let y = 0; y < nh; y++) {
+    nd[y] = [];
+    for (let x = 0; x < nw; x++) {
+      nd[y][x] = (layer.data[y] && layer.data[y][x]) || null;
+    }
+  }
+  layer.data = nd;
+}
+
+// ── Image loading ──
+const sheetImages = [];
+let loadedCount = 0;
+
+function loadSheets(cb) {
+  SHEETS.forEach((s, i) => {
+    const img = new Image();
+    img.onload = img.onerror = () => { loadedCount++; if (loadedCount === SHEETS.length) cb(); };
+    img.src = s.path;
+    sheetImages[i] = img;
+  });
+}
+
+// ══ PALETTE (left panel) ══
+const sheetSelect = document.getElementById('sheetSelect');
+const sheetCanvas = document.getElementById('sheetCanvas');
+const sheetCtx = sheetCanvas.getContext('2d');
+const previewCanvas = document.getElementById('previewCanvas');
+const previewCtx = previewCanvas.getContext('2d');
+
+let paletteZoom = 2;
+let selStart = null, selEnd = null;
+
+function initPalette() {
+  SHEETS.forEach((s, i) => {
+    const opt = document.createElement('option');
+    opt.value = i; opt.textContent = s.name;
+    sheetSelect.appendChild(opt);
+  });
+  sheetSelect.onchange = () => drawSheet();
+  drawSheet();
+}
+
+function drawSheet() {
+  const idx = parseInt(sheetSelect.value);
+  const img = sheetImages[idx];
+  if (!img || !img.naturalWidth) return;
+  currentSheet = idx;
+  sheetCanvas.width = img.naturalWidth * paletteZoom;
+  sheetCanvas.height = img.naturalHeight * paletteZoom;
+  sheetCtx.imageSmoothingEnabled = false;
+  // Checkerboard background for transparency
+  for (let y = 0; y < sheetCanvas.height; y += 16) {
+    for (let x = 0; x < sheetCanvas.width; x += 16) {
+      sheetCtx.fillStyle = ((x + y) / 16 % 2 < 1) ? '#222' : '#333';
+      sheetCtx.fillRect(x, y, 16, 16);
+    }
+  }
+  sheetCtx.drawImage(img, 0, 0, sheetCanvas.width, sheetCanvas.height);
+  // Grid
+  sheetCtx.strokeStyle = 'rgba(255,255,255,0.1)';
+  sheetCtx.lineWidth = 0.5;
+  for (let x = 0; x <= img.naturalWidth; x += TILE) {
+    sheetCtx.beginPath(); sheetCtx.moveTo(x * paletteZoom, 0);
+    sheetCtx.lineTo(x * paletteZoom, sheetCanvas.height); sheetCtx.stroke();
+  }
+  for (let y = 0; y <= img.naturalHeight; y += TILE) {
+    sheetCtx.beginPath(); sheetCtx.moveTo(0, y * paletteZoom);
+    sheetCtx.lineTo(sheetCanvas.width, y * paletteZoom); sheetCtx.stroke();
+  }
+  // Draw selection
+  if (selection && selection.sheetIdx === idx) {
+    sheetCtx.strokeStyle = '#00FF41';
+    sheetCtx.lineWidth = 2;
+    sheetCtx.strokeRect(
+      selection.sx * paletteZoom, selection.sy * paletteZoom,
+      selection.sw * paletteZoom, selection.sh * paletteZoom
+    );
+  }
+}
+
+// Palette mouse: click+drag to select region
+sheetCanvas.addEventListener('mousedown', e => {
+  const r = sheetCanvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / paletteZoom / TILE) * TILE;
+  const y = Math.floor((e.clientY - r.top) / paletteZoom / TILE) * TILE;
+  selStart = { x, y }; selEnd = { x: x + TILE, y: y + TILE };
+});
+sheetCanvas.addEventListener('mousemove', e => {
+  if (!selStart) return;
+  const r = sheetCanvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / paletteZoom / TILE) * TILE + TILE;
+  const y = Math.floor((e.clientY - r.top) / paletteZoom / TILE) * TILE + TILE;
+  selEnd = { x, y };
+  drawSheet();
+  // Temp selection highlight
+  const sx = Math.min(selStart.x, selEnd.x - TILE);
+  const sy = Math.min(selStart.y, selEnd.y - TILE);
+  const sw = Math.abs(selEnd.x - selStart.x);
+  const sh = Math.abs(selEnd.y - selStart.y);
+  if (sw > 0 && sh > 0) {
+    sheetCtx.strokeStyle = 'rgba(0,255,65,0.7)';
+    sheetCtx.lineWidth = 2;
+    sheetCtx.strokeRect(sx * paletteZoom, sy * paletteZoom, sw * paletteZoom, sh * paletteZoom);
+  }
+});
+window.addEventListener('mouseup', () => {
+  if (!selStart || !selEnd) { selStart = null; return; }
+  const sx = Math.min(selStart.x, selEnd.x - TILE);
+  const sy = Math.min(selStart.y, selEnd.y - TILE);
+  const sw = Math.max(TILE, Math.abs(selEnd.x - selStart.x));
+  const sh = Math.max(TILE, Math.abs(selEnd.y - selStart.y));
+  selection = { sheetIdx: parseInt(sheetSelect.value), sx, sy, sw, sh };
+  selStart = null;
+  drawSheet();
+  updatePreview();
+});
+
+function updatePreview() {
+  previewCtx.imageSmoothingEnabled = false;
+  previewCtx.clearRect(0, 0, 64, 64);
+  if (!selection) { document.getElementById('previewText').textContent = 'Nessun tile'; return; }
+  const img = sheetImages[selection.sheetIdx];
+  previewCtx.drawImage(img, selection.sx, selection.sy, selection.sw, selection.sh, 0, 0, 64, 64);
+  document.getElementById('previewText').textContent =
+    `${SHEETS[selection.sheetIdx].name}\n(${selection.sx},${selection.sy}) ${selection.sw}×${selection.sh}`;
+  document.getElementById('selectionInfo').textContent =
+    `Selezione: ${selection.sw/TILE}×${selection.sh/TILE} tile da (${selection.sx/TILE},${selection.sy/TILE})`;
+}
+
+// ══ MAP CANVAS (center) ══
+const mapCanvas = document.getElementById('mapCanvas');
+const mapCtx = mapCanvas.getContext('2d');
+
+function resizeMapCanvas() {
+  mapCanvas.width = mapW * TILE * zoom;
+  mapCanvas.height = mapH * TILE * zoom;
+}
+
+function drawMap() {
+  mapCtx.imageSmoothingEnabled = false;
+  const pxW = mapW * TILE * zoom, pxH = mapH * TILE * zoom;
+  // Background
+  mapCtx.fillStyle = '#1a3010';
+  mapCtx.fillRect(0, 0, pxW, pxH);
+
+  // Draw layers bottom to top
+  for (const layer of layers) {
+    if (!layer.visible) continue;
+    for (let y = 0; y < mapH; y++) {
+      for (let x = 0; x < mapW; x++) {
+        const cell = layer.data[y] && layer.data[y][x];
+        if (!cell) continue;
+        const img = sheetImages[cell.sheet];
+        if (!img || !img.naturalWidth) continue;
+        mapCtx.drawImage(img, cell.sx, cell.sy, cell.sw, cell.sh,
+          x * TILE * zoom, y * TILE * zoom,
+          (cell.sw / TILE) * TILE * zoom, (cell.sh / TILE) * TILE * zoom);
+      }
+    }
+  }
+
+  // Grid
+  if (showGrid) {
+    mapCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+    mapCtx.lineWidth = 0.5;
+    for (let x = 0; x <= mapW; x++) {
+      mapCtx.beginPath(); mapCtx.moveTo(x * TILE * zoom, 0);
+      mapCtx.lineTo(x * TILE * zoom, pxH); mapCtx.stroke();
+    }
+    for (let y = 0; y <= mapH; y++) {
+      mapCtx.beginPath(); mapCtx.moveTo(0, y * TILE * zoom);
+      mapCtx.lineTo(pxW, y * TILE * zoom); mapCtx.stroke();
+    }
+  }
+
+  // Collision overlay
+  if (showCollision) {
+    for (const layer of layers) {
+      if (!layer.visible) continue;
+      for (let y = 0; y < mapH; y++) for (let x = 0; x < mapW; x++) {
+        const cell = layer.data[y] && layer.data[y][x];
+        if (cell && cell.collision) {
+          mapCtx.fillStyle = 'rgba(255,0,0,0.3)';
+          mapCtx.fillRect(x * TILE * zoom, y * TILE * zoom, TILE * zoom, TILE * zoom);
+          mapCtx.strokeStyle = 'rgba(255,0,0,0.6)';
+          mapCtx.lineWidth = 1;
+          mapCtx.strokeRect(x * TILE * zoom + 0.5, y * TILE * zoom + 0.5, TILE * zoom - 1, TILE * zoom - 1);
+        }
+      }
+    }
+  }
+
+  // Rect tool preview
+  if (tool === 'rect' && rectStart && painting) {
+    mapCtx.strokeStyle = 'rgba(0,255,65,0.5)';
+    mapCtx.lineWidth = 2;
+    mapCtx.setLineDash([4, 4]);
+    const x1 = Math.min(rectStart.x, lastMouse.x), y1 = Math.min(rectStart.y, lastMouse.y);
+    const x2 = Math.max(rectStart.x, lastMouse.x), y2 = Math.max(rectStart.y, lastMouse.y);
+    mapCtx.strokeRect(x1 * TILE * zoom, y1 * TILE * zoom,
+      (x2 - x1 + 1) * TILE * zoom, (y2 - y1 + 1) * TILE * zoom);
+    mapCtx.setLineDash([]);
+  }
+}
+
+// ── Map painting ──
+let lastMouse = { x: -1, y: -1 };
+
+function getTileCoord(e) {
+  const r = mapCanvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / (TILE * zoom));
+  const y = Math.floor((e.clientY - r.top) / (TILE * zoom));
+  return { x: Math.max(0, Math.min(mapW - 1, x)), y: Math.max(0, Math.min(mapH - 1, y)) };
+}
+
+function saveUndo() {
+  undoStack.push(JSON.stringify(layers.map(l => ({ name: l.name, visible: l.visible, data: l.data }))));
+  if (undoStack.length > 50) undoStack.shift();
+  redoStack = [];
+}
+
+function placeTile(x, y) {
+  const layer = layers[activeLayerIdx];
+  if (!layer) return;
+  if (tool === 'erase') {
+    if (y < mapH && x < mapW) layer.data[y][x] = null;
+    return;
+  }
+  if (!selection) return;
+  // Multi-tile placement: selection can span multiple tiles
+  const tw = selection.sw / TILE, th = selection.sh / TILE;
+  for (let dy = 0; dy < th; dy++) {
+    for (let dx = 0; dx < tw; dx++) {
+      const px = x + dx, py = y + dy;
+      if (px >= mapW || py >= mapH) continue;
+      layer.data[py][px] = {
+        sheet: selection.sheetIdx,
+        sx: selection.sx + dx * TILE,
+        sy: selection.sy + dy * TILE,
+        sw: TILE, sh: TILE,
+        collision: false,
+      };
+    }
+  }
+}
+
+function floodFill(x, y) {
+  if (!selection) return;
+  const layer = layers[activeLayerIdx];
+  const target = layer.data[y][x];
+  const targetKey = target ? `${target.sheet}:${target.sx}:${target.sy}` : 'empty';
+  const fillKey = `${selection.sheetIdx}:${selection.sx}:${selection.sy}`;
+  if (targetKey === fillKey) return;
+
+  const stack = [[x, y]];
+  const visited = new Set();
+  while (stack.length) {
+    const [cx, cy] = stack.pop();
+    const key = `${cx},${cy}`;
+    if (visited.has(key)) continue;
+    if (cx < 0 || cx >= mapW || cy < 0 || cy >= mapH) continue;
+    const cell = layer.data[cy][cx];
+    const cellKey = cell ? `${cell.sheet}:${cell.sx}:${cell.sy}` : 'empty';
+    if (cellKey !== targetKey) continue;
+    visited.add(key);
+    layer.data[cy][cx] = {
+      sheet: selection.sheetIdx, sx: selection.sx, sy: selection.sy,
+      sw: TILE, sh: TILE, collision: false,
+    };
+    stack.push([cx - 1, cy], [cx + 1, cy], [cx, cy - 1], [cx, cy + 1]);
+  }
+}
+
+function fillRect(x1, y1, x2, y2) {
+  const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+  for (let y = minY; y <= maxY; y++)
+    for (let x = minX; x <= maxX; x++) placeTile(x, y);
+}
+
+mapCanvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const { x, y } = getTileCoord(e);
+  painting = true;
+  saveUndo();
+  if (tool === 'pen' || tool === 'erase') {
+    placeTile(x, y); drawMap();
+  } else if (tool === 'rect') {
+    rectStart = { x, y };
+  } else if (tool === 'fill') {
+    floodFill(x, y); drawMap();
+    painting = false;
+  }
+  lastMouse = { x, y };
+  updateStatus(x, y);
+});
+
+mapCanvas.addEventListener('mousemove', e => {
+  const { x, y } = getTileCoord(e);
+  lastMouse = { x, y };
+  if (painting && (tool === 'pen' || tool === 'erase')) {
+    placeTile(x, y); drawMap();
+  }
+  if (painting && tool === 'rect') drawMap();
+  updateStatus(x, y);
+});
+
+mapCanvas.addEventListener('mouseup', e => {
+  if (!painting) return;
+  if (tool === 'rect' && rectStart) {
+    const { x, y } = getTileCoord(e);
+    fillRect(rectStart.x, rectStart.y, x, y);
+    rectStart = null;
+    drawMap();
+  }
+  painting = false;
+});
+
+// Right-click: toggle collision on active layer
+mapCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const { x, y } = getTileCoord(e);
+  const layer = layers[activeLayerIdx];
+  const cell = layer.data[y] && layer.data[y][x];
+  if (cell) {
+    cell.collision = !cell.collision;
+    drawMap();
+  }
+});
+
+function updateStatus(x, y) {
+  const layer = layers[activeLayerIdx];
+  const cell = layer.data[y] && layer.data[y][x];
+  let info = `Pos: (${x}, ${y}) | Layer: ${layer.name} | Tool: ${tool}`;
+  if (cell) info += ` | Tile: ${SHEETS[cell.sheet].name} (${cell.sx},${cell.sy})${cell.collision ? ' [SOLID]' : ''}`;
+  document.getElementById('statusBar').textContent = info;
+}
+
+// ══ TOOLBAR ══
+document.getElementById('btnPen').onclick = () => setTool('pen');
+document.getElementById('btnRect').onclick = () => setTool('rect');
+document.getElementById('btnFill').onclick = () => setTool('fill');
+document.getElementById('btnErase').onclick = () => setTool('erase');
+
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('#toolbar button').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn' + t.charAt(0).toUpperCase() + t.slice(1)).classList.add('active');
+}
+
+document.getElementById('btnResize').onclick = () => {
+  const nw = parseInt(document.getElementById('gridW').value);
+  const nh = parseInt(document.getElementById('gridH').value);
+  if (nw < 4 || nh < 4 || nw > 200 || nh > 200) return;
+  saveUndo();
+  mapW = nw; mapH = nh;
+  layers.forEach(l => resizeLayer(l, nw, nh));
+  resizeMapCanvas(); drawMap();
+};
+
+document.getElementById('btnUndo').onclick = undo;
+document.getElementById('btnRedo').onclick = redo;
+
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.stringify(layers.map(l => ({ name: l.name, visible: l.visible, data: l.data }))));
+  const state = JSON.parse(undoStack.pop());
+  state.forEach((s, i) => { if (layers[i]) { layers[i].name = s.name; layers[i].visible = s.visible; layers[i].data = s.data; } });
+  drawMap(); renderLayers();
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.stringify(layers.map(l => ({ name: l.name, visible: l.visible, data: l.data }))));
+  const state = JSON.parse(redoStack.pop());
+  state.forEach((s, i) => { if (layers[i]) { layers[i].name = s.name; layers[i].visible = s.visible; layers[i].data = s.data; } });
+  drawMap(); renderLayers();
+}
+
+document.getElementById('zoomIn').onclick = () => { if (zoom < 6) { zoom++; document.getElementById('zoomLabel').textContent = zoom + 'x'; resizeMapCanvas(); drawMap(); } };
+document.getElementById('zoomOut').onclick = () => { if (zoom > 1) { zoom--; document.getElementById('zoomLabel').textContent = zoom + 'x'; resizeMapCanvas(); drawMap(); } };
+document.getElementById('showGrid').onchange = e => { showGrid = e.target.checked; drawMap(); };
+document.getElementById('showCollision').onchange = e => { showCollision = e.target.checked; drawMap(); };
+
+// ══ LAYERS ══
+function renderLayers() {
+  const list = document.getElementById('layerList');
+  list.innerHTML = '';
+  layers.forEach((l, i) => {
+    const div = document.createElement('div');
+    div.className = 'layer-item' + (i === activeLayerIdx ? ' active' : '');
+    div.innerHTML = `<span class="vis">${l.visible ? '👁' : '○'}</span><span>${l.name}</span>`;
+    div.querySelector('.vis').onclick = e => { e.stopPropagation(); l.visible = !l.visible; renderLayers(); drawMap(); };
+    div.onclick = () => { activeLayerIdx = i; renderLayers(); };
+    div.ondblclick = () => {
+      const name = prompt('Nome layer:', l.name);
+      if (name) { l.name = name; renderLayers(); }
+    };
+    list.appendChild(div);
+  });
+}
+
+document.getElementById('btnAddLayer').onclick = () => {
+  layers.push(makeLayer('Layer ' + (layers.length + 1)));
+  activeLayerIdx = layers.length - 1;
+  renderLayers(); drawMap();
+};
+document.getElementById('btnDelLayer').onclick = () => {
+  if (layers.length <= 1) return;
+  saveUndo();
+  layers.splice(activeLayerIdx, 1);
+  activeLayerIdx = Math.min(activeLayerIdx, layers.length - 1);
+  renderLayers(); drawMap();
+};
+document.getElementById('btnUpLayer').onclick = () => {
+  if (activeLayerIdx <= 0) return;
+  [layers[activeLayerIdx], layers[activeLayerIdx - 1]] = [layers[activeLayerIdx - 1], layers[activeLayerIdx]];
+  activeLayerIdx--; renderLayers(); drawMap();
+};
+document.getElementById('btnDownLayer').onclick = () => {
+  if (activeLayerIdx >= layers.length - 1) return;
+  [layers[activeLayerIdx], layers[activeLayerIdx + 1]] = [layers[activeLayerIdx + 1], layers[activeLayerIdx]];
+  activeLayerIdx++; renderLayers(); drawMap();
+};
+
+// ══ EXPORT / IMPORT ══
+document.getElementById('btnExport').onclick = () => {
+  const data = {
+    version: 1,
+    mapW, mapH, tileSize: TILE,
+    sheets: SHEETS.map(s => s.path),
+    layers: layers.map(l => ({
+      name: l.name, visible: l.visible,
+      tiles: exportLayerData(l),
+    })),
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'map-data.json';
+  a.click();
+};
+
+function exportLayerData(layer) {
+  const tiles = [];
+  for (let y = 0; y < mapH; y++) for (let x = 0; x < mapW; x++) {
+    const c = layer.data[y][x];
+    if (c) tiles.push({ x, y, s: c.sheet, sx: c.sx, sy: c.sy, sw: c.sw, sh: c.sh, c: c.collision ? 1 : 0 });
+  }
+  return tiles;
+}
+
+document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
+document.getElementById('importFile').onchange = e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      mapW = data.mapW; mapH = data.mapH;
+      document.getElementById('gridW').value = mapW;
+      document.getElementById('gridH').value = mapH;
+      layers = data.layers.map(l => {
+        const layer = makeLayer(l.name);
+        layer.visible = l.visible;
+        l.tiles.forEach(t => {
+          layer.data[t.y][t.x] = { sheet: t.s, sx: t.sx, sy: t.sy, sw: t.sw, sh: t.sh, collision: !!t.c };
+        });
+        return layer;
+      });
+      activeLayerIdx = 0;
+      resizeMapCanvas(); renderLayers(); drawMap();
+      alert('Mappa importata!');
+    } catch (err) { alert('Errore: ' + err.message); }
+  };
+  reader.readAsText(file);
+};
+
+// ── Genera il file index.html completo con mappa embeddata ──
+function buildGameHTML() {
+  const mapData = {
+    mapW, mapH, tileSize: TILE,
+    sheets: SHEETS.map(s => s.path),
+    layers: layers.map(l => ({ name: l.name, tiles: exportLayerData(l) })),
+  };
+  return `<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio World</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#020408;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;overflow:hidden;font-family:'Press Start 2P',monospace}
+#wrap{position:relative;user-select:none}
+#titlebar{display:flex;justify-content:space-between;align-items:center;padding:7px 12px;color:#00FF41;font-size:6.5px;letter-spacing:.08em;border-bottom:1px solid rgba(0,255,65,.12);margin-bottom:4px}
+#gameCanvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;border:2px solid #00FF41;box-shadow:0 0 50px rgba(0,255,65,.25),0 0 100px rgba(0,255,65,.08)}
+#ctrlbar{display:flex;gap:18px;flex-wrap:wrap;padding:7px 12px;color:#333;font-size:5.5px;border-top:1px solid rgba(0,255,65,.08);margin-top:4px}
+.ch{display:flex;align-items:center;gap:5px}
+.kbd{background:#0e0e0e;border:1px solid #252525;border-bottom:2px solid #080808;padding:2px 5px;border-radius:2px;color:#555;font-size:5.5px;font-family:'Press Start 2P',monospace}
+#modal{display:none;position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.92);align-items:center;justify-content:center;z-index:20;opacity:0;transition:opacity .3s}
+#modal.open{display:flex;opacity:1}
+.mbox{background:#070710;border:2px solid var(--accent,#00FF41);box-shadow:0 0 50px var(--glow,rgba(0,255,65,.35));padding:22px 26px;width:700px;max-height:90%;overflow-y:auto;transform:scale(.95);transition:transform .3s}
+.open .mbox{transform:scale(1)}
+.mbox::-webkit-scrollbar{width:3px}.mbox::-webkit-scrollbar-thumb{background:var(--accent,#00FF41)}
+.mtitle{color:var(--accent,#00FF41);font-size:9px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+.msubtitle{color:var(--accent-dim,#007a18);font-size:5.5px;margin-bottom:18px;opacity:.7}
+.mblink{width:7px;height:7px;background:var(--accent,#00FF41);display:inline-block;animation:bl 1s steps(1) infinite;flex-shrink:0}
+@keyframes bl{0%,49%{opacity:1}50%,100%{opacity:0}}
+.pgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.pc{background:#0c0c14;border:1px solid #181828;padding:14px;cursor:pointer;transition:border-color .2s,transform .2s}
+.pc:hover{border-color:var(--accent,#00FF41);transform:translateY(-2px)}
+.pnum{font-size:5.5px;color:var(--accent,#00FF41);margin-bottom:5px}.ptyp{font-size:4.5px;background:var(--accent,#00FF41);color:#000;padding:2px 5px;display:inline-block;margin-bottom:8px}
+.pname{font-size:7.5px;color:#eee;margin-bottom:6px;line-height:1.5}
+.pdesc{font-size:4.5px;color:#4a4a5a;line-height:1.9;margin-bottom:8px}
+.ptags{display:flex;flex-wrap:wrap;gap:4px}
+.ptag{font-size:3.5px;border:1px solid var(--tag-border,rgba(0,255,65,.3));color:var(--tag-color,#007a18);padding:2px 4px}
+.mclose{background:none;border:1px solid #1a1a1a;color:#333;font-family:'Press Start 2P',monospace;font-size:5.5px;padding:9px 16px;cursor:pointer;transition:all .2s;float:right;margin-top:8px}
+.mclose:hover{border-color:var(--accent,#00FF41);color:var(--accent,#00FF41)}
+#loading{position:absolute;top:0;left:0;right:0;bottom:0;background:#020408;display:flex;align-items:center;justify-content:center;z-index:50;color:#00FF41;font-size:8px;font-family:'Press Start 2P',monospace}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="titlebar"><span>◉ PORTFOLIO.WORLD v3.0</span><span id="zoneLabel">ZONA: MAPPA</span><span id="posLabel">POS: (0,0)</span></div>
+  <canvas id="gameCanvas" width="820" height="500"></canvas>
+  <div id="ctrlbar">
+    <span class="ch"><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span>Muovi</span>
+    <span class="ch"><span class="kbd">↑↓←→</span>Muovi</span>
+    <span class="ch"><span class="kbd">E</span>Entra</span>
+    <span class="ch"><span class="kbd">ESC</span>Chiudi</span>
+  </div>
+  <div id="modal"><div class="mbox" id="modalContent"></div></div>
+  <div id="loading">CARICAMENTO...</div>
+</div>
+<` + `script>
+// ═══ MAPPA EMBEDDATA (generata dall'editor) ═══
+const MAP_DATA = ${JSON.stringify(mapData)};
+
+// ═══ AZIENDE - modifica qui i tuoi dati ═══
+const COMPANIES = [
+  {
+    name: 'NEXUS DIGITAL',
+    color: '#00FF41', colorDim: '#007a18', colorRgb: '0,255,65',
+    projects: [
+      { num:'001', type:'WEB APP', name:'Gestionale<br>Aziendale', desc:'Piattaforma gestionale con moduli HR e reporting.', tags:['React','Node.js','PostgreSQL','Docker'] },
+      { num:'002', type:'E-COMMERCE', name:'Shop<br>Multi-Vendor', desc:'Marketplace con Stripe Connect e dashboard venditori.', tags:['Next.js','Stripe','MongoDB','AWS'] },
+    ]
+  },
+  {
+    name: 'AURORA TECH',
+    color: '#00D4FF', colorDim: '#006a80', colorRgb: '0,212,255',
+    projects: [
+      { num:'001', type:'DASHBOARD', name:'Analytics<br>Platform', desc:'Dashboard real-time con grafici interattivi.', tags:['Laravel','Chart.js','Redis','WebSocket'] },
+      { num:'002', type:'API', name:'Microservizi<br>Cloud', desc:'Architettura microservizi con 99.9% uptime.', tags:['Go','gRPC','Kubernetes','Prometheus'] },
+    ]
+  },
+  {
+    name: 'VORTEX MEDIA',
+    color: '#FF41E0', colorDim: '#801070', colorRgb: '255,65,224',
+    projects: [
+      { num:'001', type:'LANDING PAGE', name:'Campagna<br>Conversione', desc:'Landing con A/B testing e GSAP. +47% conversione.', tags:['HTML/CSS','GSAP','SEO','Analytics'] },
+      { num:'002', type:'BRANDING', name:'Portale<br>Contenuti', desc:'CMS headless con PageSpeed 98/100.', tags:['Nuxt.js','Strapi','Cloudflare','TailwindCSS'] },
+    ]
+  }
+];
+
+// ═══ PORTE - coordinate tile delle porte per ogni azienda ═══
+// Modifica dopo aver piazzato le porte nell'editor!
+// Se vuoto, il gioco le rileva automaticamente.
+let doorZones = [
+  // { tx: 25, ty: 9, company: 0 },
+  // { tx: 9, ty: 23, company: 1 },
+  // { tx: 38, ty: 23, company: 2 },
+];
+
+// ═══ ENGINE ═══
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const CW = 820, CH = 500, GT = 32;
+let mapW = MAP_DATA.mapW, mapH = MAP_DATA.mapH;
+let sheetImgs = {}, charImgs = {};
+let collisionMap = new Set();
+let mapLayers = [];
+
+// Carica immagini
+function loadImg(src) {
+  return new Promise(r => { const i = new Image(); i.onload = i.onerror = () => r(i); i.src = src; });
+}
+async function loadAll() {
+  const promises = [];
+  MAP_DATA.sheets.forEach((p, i) => promises.push(loadImg(p).then(img => sheetImgs[i] = img)));
+  const charPaths = {
+    walkD:'tiles/Entities/Characters/Body_A/Animations/Walk_Base/Walk_Down-Sheet.png',
+    walkS:'tiles/Entities/Characters/Body_A/Animations/Walk_Base/Walk_Side-Sheet.png',
+    walkU:'tiles/Entities/Characters/Body_A/Animations/Walk_Base/Walk_Up-Sheet.png',
+    idleD:'tiles/Entities/Characters/Body_A/Animations/Idle_Base/Idle_Down-Sheet.png',
+    idleS:'tiles/Entities/Characters/Body_A/Animations/Idle_Base/Idle_Side-Sheet.png',
+    idleU:'tiles/Entities/Characters/Body_A/Animations/Idle_Base/Idle_Up-Sheet.png',
+  };
+  for (const [k, p] of Object.entries(charPaths)) promises.push(loadImg(p).then(img => charImgs[k] = img));
+  await Promise.all(promises);
+}
+
+// Parsa mappa
+function parseMap() {
+  collisionMap = new Set();
+  mapLayers = MAP_DATA.layers.map(l => {
+    const tiles = []; l.tiles.forEach(t => { tiles.push(t); if (t.c) collisionMap.add(t.y * mapW + t.x); });
+    return { name: l.name, tiles };
+  });
+  // Auto-detect porte
+  if (!doorZones.length) {
+    const found = [];
+    for (let y = 1; y < mapH - 1; y++) for (let x = 1; x < mapW - 1; x++) {
+      if (collisionMap.has(y * mapW + x)) continue;
+      let sn = 0;
+      if (collisionMap.has((y-1)*mapW+x)) sn++; if (collisionMap.has((y+1)*mapW+x)) sn++;
+      if (collisionMap.has(y*mapW+x-1)) sn++; if (collisionMap.has(y*mapW+x+1)) sn++;
+      if (sn >= 3) found.push({tx:x, ty:y});
+    }
+    found.slice(0, 3).forEach((d, i) => doorZones.push({tx:d.tx, ty:d.ty, company:Math.min(i, COMPANIES.length-1)}));
+  }
+}
+
+// Render mappa
+function renderMap(cx, cy) {
+  const sx=Math.max(0,Math.floor(cx/GT)-1), sy2=Math.max(0,Math.floor(cy/GT)-1);
+  const ex=Math.min(mapW-1,Math.ceil((cx+CW)/GT)+1), ey=Math.min(mapH-1,Math.ceil((cy+CH)/GT)+1);
+  for (const layer of mapLayers) for (const t of layer.tiles) {
+    if (t.x<sx||t.x>ex||t.y<sy2||t.y>ey) continue;
+    const img = sheetImgs[t.s]; if (!img||!img.naturalWidth) continue;
+    ctx.drawImage(img, t.sx, t.sy, t.sw, t.sh, t.x*GT-cx, t.y*GT-cy, GT, GT);
+  }
+}
+
+// Player
+const player = {x:0, y:0, spd:2.6, dir:2, frame:0, ft:0, moving:false, iF:0, iFt:0};
+const cam = {x:0, y:0};
+const CS = 2.8, CDW = Math.round(64*CS);
+
+function drawPlayer(px, py) {
+  let sheet, fx, flip=false;
+  if (player.moving) { fx=player.frame%6;
+    if(player.dir===2)sheet=charImgs.walkD; else if(player.dir===0)sheet=charImgs.walkU;
+    else if(player.dir===1)sheet=charImgs.walkS; else{sheet=charImgs.walkS;flip=true;}
+  } else { fx=player.iF%4;
+    if(player.dir===2)sheet=charImgs.idleD; else if(player.dir===0)sheet=charImgs.idleU;
+    else if(player.dir===1)sheet=charImgs.idleS; else{sheet=charImgs.idleS;flip=true;}
+  }
+  if(!sheet)return;
+  ctx.save();ctx.globalAlpha=.2;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(px,py+4,12,5,0,0,Math.PI*2);ctx.fill();ctx.restore();
+  ctx.save();ctx.translate(px,py);if(flip)ctx.scale(-1,1);
+  ctx.drawImage(sheet,fx*64,0,64,64,-CDW/2,-CDW*.82,CDW,CDW);ctx.restore();
+}
+
+// Collision
+function isSolid(px,py){const tx=Math.floor(px/GT),ty=Math.floor(py/GT);if(tx<0||tx>=mapW||ty<0||ty>=mapH)return true;return collisionMap.has(ty*mapW+tx);}
+function canMove(nx,ny){const m=7;return !isSolid(nx-m,ny-m)&&!isSolid(nx+m,ny-m)&&!isSolid(nx-m,ny+m+4)&&!isSolid(nx+m,ny+m+4);}
+
+const keys={},justP={};
+window.addEventListener('keydown',e=>{if(!keys[e.key])justP[e.key]=true;keys[e.key]=true;if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();});
+window.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+function nearDoor(){const px=Math.floor(player.x/GT),py=Math.floor(player.y/GT);for(const d of doorZones)if(Math.abs(px-d.tx)<=2&&Math.abs(py-d.ty)<=2)return d.company;return -1;}
+
+// Modal
+let modalOpen=false,hintC=-1;const modal=document.getElementById('modal'),modalCt=document.getElementById('modalContent');
+function openModal(ci){const c=COMPANIES[ci];modal.style.setProperty('--accent',c.color);modal.style.setProperty('--accent-dim',c.colorDim);modal.style.setProperty('--glow','rgba('+c.colorRgb+',.35)');modal.style.setProperty('--tag-border','rgba('+c.colorRgb+',.3)');modal.style.setProperty('--tag-color',c.colorDim);let h='<div class="mtitle"><span class="mblink"></span>'+c.name+'</div><div class="msubtitle">// ARCHIVIO PROGETTI</div><div class="pgrid">';c.projects.forEach(p=>{h+='<div class="pc"><div class="pnum">// '+p.num+'</div><span class="ptyp">'+p.type+'</span><div class="pname">'+p.name+'</div><div class="pdesc">'+p.desc+'</div><div class="ptags">'+p.tags.map(t=>'<span class="ptag">'+t+'</span>').join('')+'</div></div>';});h+='</div><button class="mclose" onclick="closeModal()">[ ESC ] CHIUDI</button>';modalCt.innerHTML=h;modalOpen=true;modal.classList.add('open');}
+function closeModal(){modalOpen=false;modal.classList.remove('open');}
+window.addEventListener('keydown',e=>{if(e.key==='Escape'&&modalOpen)closeModal();});
+
+// Lighting
+const lc2=document.createElement('canvas');lc2.width=CW;lc2.height=CH;const lx2=lc2.getContext('2d');
+function renderLighting(px,py){lx2.clearRect(0,0,CW,CH);lx2.fillStyle='rgba(5,8,25,0.15)';lx2.fillRect(0,0,CW,CH);lx2.globalCompositeOperation='destination-out';const g=lx2.createRadialGradient(px,py,0,px,py,130);g.addColorStop(0,'rgba(0,0,0,0.5)');g.addColorStop(1,'rgba(0,0,0,0)');lx2.fillStyle=g;lx2.beginPath();lx2.arc(px,py,130,0,Math.PI*2);lx2.fill();lx2.globalCompositeOperation='source-over';ctx.drawImage(lc2,0,0);}
+
+// Minimap
+function drawMinimap(cx,cy){const mw=88,mh=55,mx=CW-mw-10,my=10,sxm=mw/(mapW*GT),sym=mh/(mapH*GT);ctx.save();ctx.globalAlpha=.85;ctx.fillStyle='#0a1a08';ctx.fillRect(mx-1,my-1,mw+2,mh+2);ctx.strokeStyle='rgba(0,255,65,.5)';ctx.lineWidth=1;ctx.strokeRect(mx-1,my-1,mw+2,mh+2);for(let ty=0;ty<mapH;ty++)for(let tx=0;tx<mapW;tx++){ctx.fillStyle=collisionMap.has(ty*mapW+tx)?'#0a1408':'#2a5020';ctx.fillRect(mx+tx*sxm*GT,my+ty*sym*GT,Math.ceil(sxm*GT)+.5,Math.ceil(sym*GT)+.5);}doorZones.forEach(d=>{const c=COMPANIES[d.company];ctx.fillStyle=c?c.color:'#fff';ctx.fillRect(mx+d.tx*sxm*GT-1,my+d.ty*sym*GT-1,3,3);});ctx.strokeStyle='rgba(255,255,255,.15)';ctx.lineWidth=.5;ctx.strokeRect(mx+cx*sxm,my+cy*sym,CW*sxm,CH*sym);ctx.fillStyle='#fff';ctx.fillRect(mx+player.x*sxm-1.5,my+player.y*sym-1.5,3,3);ctx.restore();}
+
+// Update & Render
+let time=0;
+function update(dt){time+=dt;if(modalOpen){Object.keys(justP).forEach(k=>delete justP[k]);return;}let dx=0,dy=0;if(keys.ArrowUp||keys.w||keys.W)dy=-1;if(keys.ArrowDown||keys.s||keys.S)dy=1;if(keys.ArrowLeft||keys.a||keys.A)dx=-1;if(keys.ArrowRight||keys.d||keys.D)dx=1;if(dx&&dy){dx*=.707;dy*=.707;}player.moving=dx!==0||dy!==0;if(dy<0)player.dir=0;else if(dy>0)player.dir=2;else if(dx>0)player.dir=1;else if(dx<0)player.dir=3;const nx=player.x+dx*player.spd,ny=player.y+dy*player.spd;if(canMove(nx,player.y))player.x=nx;if(canMove(player.x,ny))player.y=ny;player.x=Math.max(GT,Math.min(mapW*GT-GT,player.x));player.y=Math.max(GT,Math.min(mapH*GT-GT,player.y));if(player.moving){player.ft+=dt;if(player.ft>.1){player.frame=(player.frame+1)%6;player.ft=0;}player.iFt=0;player.iF=0;}else{player.frame=0;player.ft=0;player.iFt+=dt;if(player.iFt>.25){player.iF=(player.iF+1)%4;player.iFt=0;}}hintC=nearDoor();if(justP.e||justP.E||justP[' ']){if(hintC>=0)openModal(hintC);}Object.keys(justP).forEach(k=>delete justP[k]);const tx=player.x-CW/2,ty=player.y-CH/2;cam.x+=(Math.max(0,Math.min(mapW*GT-CW,tx))-cam.x)*.1;cam.y+=(Math.max(0,Math.min(mapH*GT-CH,ty))-cam.y)*.1;document.getElementById('posLabel').textContent='POS: ('+Math.floor(player.x/GT)+','+Math.floor(player.y/GT)+')';}
+function render(){const cx=Math.round(cam.x),cy=Math.round(cam.y);ctx.fillStyle='#1a3010';ctx.fillRect(0,0,CW,CH);renderMap(cx,cy);const px=Math.round(player.x-cx),py=Math.round(player.y-cy);drawPlayer(px,py);renderLighting(px,py);if(hintC>=0&&!modalOpen){const c=COMPANIES[hintC];ctx.save();ctx.shadowColor=c.color;ctx.shadowBlur=10;ctx.fillStyle='rgba(0,5,1,.88)';ctx.fillRect(px-58,py-44,116,22);ctx.strokeStyle=c.color;ctx.lineWidth=1;ctx.strokeRect(px-58,py-44,116,22);ctx.fillStyle=c.color;ctx.font='5px "Press Start 2P"';ctx.textAlign='center';ctx.fillText('[E] '+c.name,px,py-29);ctx.restore();}drawMinimap(cx,cy);const vg=ctx.createRadialGradient(CW/2,CH/2,CH*.35,CW/2,CH/2,CH*1.1);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,8,.25)');ctx.fillStyle=vg;ctx.fillRect(0,0,CW,CH);}
+let last=0;function loop(ts){const dt=Math.min((ts-last)/1000,.05);last=ts;update(dt);render();requestAnimationFrame(loop);}
+
+// Start
+(async()=>{await loadAll();parseMap();player.x=Math.floor(mapW/2)*GT;player.y=Math.floor(mapH/2)*GT;cam.x=player.x-CW/2;cam.y=player.y-CH/2;document.getElementById('loading').style.display='none';requestAnimationFrame(loop);})();
+<` + `/script>
+</body>
+</html>`;
+}
+
+document.getElementById('btnGenCode').onclick = () => {
+  const html = buildGameHTML();
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'index.html';
+  a.click();
+  alert('index.html scaricato!\\nQuesto file + la cartella tiles/ = il tuo portfolio pronto da pubblicare.');
+};
+
+// ══ TEST IN GAME (apre in nuova tab) ══
+document.getElementById('btnTestGame').onclick = () => {
+  const html = buildGameHTML();
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  window.open(url, '_blank');
+};
+
+// ══ KEYBOARD SHORTCUTS ══
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.ctrlKey && e.key === 'z') { e.preventDefault(); undo(); }
+  if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+  if (e.key === 'b') setTool('pen');
+  if (e.key === 'r') setTool('rect');
+  if (e.key === 'g') setTool('fill');
+  if (e.key === 'e') setTool('erase');
+  if (e.key === '+' || e.key === '=') document.getElementById('zoomIn').click();
+  if (e.key === '-') document.getElementById('zoomOut').click();
+});
+
+// ══ INIT ══
+loadSheets(() => {
+  initPalette();
+  resizeMapCanvas();
+  renderLayers();
+  drawMap();
+});
+</script>
+</body>
+</html>

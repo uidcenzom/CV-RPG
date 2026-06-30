@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Portfolio World — il tuo CV come una mappa</title>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#020408;color:#cdd;font-family:'Press Start 2P',monospace;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;overflow:hidden;position:relative}
+#bg{position:fixed;inset:0;z-index:0;opacity:.18;filter:blur(1px)}
+.wrap{position:relative;z-index:1;max-width:760px}
+h1{color:#00FF41;font-size:26px;line-height:1.5;text-shadow:0 0 18px rgba(0,255,65,.5);margin-bottom:14px}
+.sub{color:#7aa;font-size:9px;line-height:1.9;margin-bottom:34px;opacity:.9}
+.cta{display:flex;gap:16px;justify-content:center;flex-wrap:wrap}
+a.btn{display:block;font-family:inherit;font-size:11px;line-height:1.6;text-decoration:none;padding:18px 24px;border:2px solid;transition:.18s;min-width:220px}
+a.create{color:#00FF41;border-color:#00FF41;box-shadow:0 0 24px rgba(0,255,65,.18)}
+a.create:hover{background:#00FF41;color:#000;box-shadow:0 0 40px rgba(0,255,65,.5)}
+a.demo{color:#00D4FF;border-color:#00D4FF}
+a.demo:hover{background:#00D4FF;color:#000;box-shadow:0 0 40px rgba(0,212,255,.45)}
+.small{font-size:7px;color:#445;margin-top:10px}
+.legend{display:flex;gap:18px;justify-content:center;flex-wrap:wrap;margin-top:30px;font-size:7px}
+.legend span{display:flex;align-items:center;gap:6px;color:#667}
+.dot{width:9px;height:9px;display:inline-block}
+.foot{position:fixed;bottom:10px;left:0;right:0;text-align:center;font-size:6px;color:#334;z-index:1}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<div class="wrap">
+  <h1>◉ PORTFOLIO<br>WORLD</h1>
+  <div class="sub">// trasforma il tuo curriculum in un mondo 2D esplorabile<br>ogni studio, lavoro e progetto diventa un edificio sulla mappa</div>
+  <div class="cta">
+    <a class="btn create" href="cv-builder.html">▶ CREA DAL<br>TUO CV</a>
+    <a class="btn demo" href="portfolio-map.html">◉ ESPLORA<br>LA DEMO</a>
+  </div>
+  <div class="small">PDF / DOCX · tutto nel tuo browser · nessun dato inviato online</div>
+  <div class="legend">
+    <span><i class="dot" style="background:#00D4FF"></i> Studi</span>
+    <span><i class="dot" style="background:#00FF41"></i> Lavoro</span>
+    <span><i class="dot" style="background:#FF41E0"></i> Progetti</span>
+  </div>
+</div>
+<div class="foot">Muoviti con WASD / frecce · entra negli edifici con E</div>
+<script>
+// sfondo decorativo: pioggia di "matrix" verde, leggera
+const c=document.getElementById('bg'),x=c.getContext('2d');
+let W,H,cols,drops;
+function resize(){W=c.width=innerWidth;H=c.height=innerHeight;cols=Math.floor(W/14);drops=Array(cols).fill(0).map(()=>Math.random()*H);}
+resize();addEventListener('resize',resize);
+const chars='01ABCDEF<>/[]{}#$';
+function tick(){
+  x.fillStyle='rgba(2,4,8,.10)';x.fillRect(0,0,W,H);
+  x.fillStyle='#00FF41';x.font='12px monospace';
+  for(let i=0;i<cols;i++){
+    x.fillText(chars[Math.floor(Math.random()*chars.length)],i*14,drops[i]);
+    drops[i]= drops[i]>H+Math.random()*200 ? 0 : drops[i]+14;
+  }
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>

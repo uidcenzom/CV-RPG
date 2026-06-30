@@ -1,0 +1,12 @@
+# File di sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / strumenti
+.vscode/
+.idea/
+.claude/
+
+# (Opzionale) sorgenti grafici non usati dal sito — togli il # sotto per escluderli e alleggerire il repo
+# tiles/**/*.aseprite
