@@ -232,6 +232,12 @@ const DATELINE=new RegExp('\\b(19|20)\\d{2}\\b|\\b\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.
 const CONTACT=/(@|tel\.?|cell\.?|telefono|phone|\+?\d[\d\s().-]{8,}|c\.f\.|p\.?\s?iva|linkedin|curriculum vitae|nat[oa]\s|date of birth|place of birth|nationality|residen|indirizzo|home\s*:)/i;
 const CITY=/^\s*(city|citt[àa]|luogo|place|sede)\s*[:：]/i;
 const linkRe=/https?:\/\/[^\s)]+/ig;
+// Indizi semantici: distinguono l'ENTE dal TITOLO anche quando l'ordine cambia tra CV
+const ORG_HINT=/\b(universit|università|universidad|université|universität|ateneo|politecnico|istituto|institut|college|scuola|school|liceo|lyc[ée]e|academy|accademia|hochschule|escuela|s\.?r\.?l|s\.?p\.?a|gmbh|inc|ltd|llc|company|azienda|studio|lab)\b/i;
+const TITLE_HINT=/\b(degree|laurea|master|bachelor|diploma|dottorato|phd|maturit[àa]|licen[cz]|grado|certificate|certificat|corso|developer|engineer|analyst|manager|intern|internship|stage|tirocinio|consultant|designer|scientist|specialist|technician|assistant|ingegnere|sviluppatore|analista|stagista)\b/i;
+// Link anche senza http:// (es. "github.com/utente")
+function barelink(s){const m=String(s).match(/https?:\/\/[^\s)]+|(?:www\.|[a-z0-9-]+\.)+(?:com|io|dev|org|net|me|ai|app|co|gg|xyz)\b[^\s)]*/i); if(!m)return ''; let u=m[0].replace(/[.,;]+$/,''); return /^https?:\/\//i.test(u)?u:'https://'+u;}
+function firstShort(arr){return arr.find(l=>l.length<=60 && !CONTACT.test(l))||arr[0]||'';}
 
 // Mantiene i run di 2+ spazi (in Europass separano i campi sulla stessa riga)
 function cleanLine(l){return l.replace(/\t/g,' ').replace(/^[•▪●◦⁃∙·‣*>»\-–—\s]+/,'').replace(/ {4,}/g,'   ').replace(/\s+$/,'');}
@@ -241,6 +247,7 @@ function linkOf(s){const m=String(s).match(/https?:\/\/[^\s)]+/i);return m?m[0].
 function classifyHeader(line){
   const l=line.toLowerCase().replace(/[:•\-–—\[\]]/g,' ').replace(/\s+/g,' ').trim();
   if(line.length>45)return null;            // i titoli di sezione sono corti
+  if(l.split(' ').length>4)return null;     // ...e di poche parole (evita frasi tipo "Additional projects available on GitHub")
   if(CONTACT.test(line) && !/skills|language|competenze|lingue/i.test(line)) return null;
   for(const k of ['skip','education','project','work']) if(KW[k].some(w=>l.includes(w))) return k;
   return null;
@@ -303,38 +310,37 @@ function parseDated(L, kind, out){
   dateIdx.forEach((d,di)=>{
     const prevD=di>0?dateIdx[di-1]:-1, nextD=di<dateIdx.length-1?dateIdx[di+1]:L.length;
     const {start,end}=datesOf(L[d]);
-    const orgOnDate=stripDates(L[d]);
-    // "Titolo-sopra" solo se il testo sulla riga-data sembra un ente (≥2 parole o lungo),
-    // non una semplice città/luogo (es. "Pompei")
-    const titleFirst = /[A-Za-zÀ-ÿ]/.test(orgOnDate) && (orgOnDate.split(/\s+/).length>=2 || orgOnDate.length>=10);
-    let organization='', title='', location='', desc=[];
-    if(titleFirst){
-      organization=orgOnDate;
-      if(d-1>prevD && d-1>=0 && !DATELINE.test(L[d-1])) title=L[d-1];
-      const nextTF = nextD<L.length && !DATELINE.test(stripDates(L[nextD])) && /[A-Za-zÀ-ÿ]{2,}/.test(stripDates(L[nextD]));
-      const nextTextLen = nextD<L.length?stripDates(L[nextD]).split(/\s+/).length:0;
-      const stop = (nextTF && nextTextLen>=2) ? nextD-1 : nextD;  // riserva la riga-titolo della voce successiva
-      for(let j=d+1;j<stop;j++){
-        if(CITY.test(L[j])){ location=L[j].replace(CITY,'').replace(/\s{2,}/g,' ').trim(); continue; }
-        desc.push(...splitCols(L[j]));
-      }
-    } else {
-      // DATA-DA-SOLA: l'eventuale testo sulla riga-data è un luogo; ente/titolo sotto
-      if(orgOnDate && orgOnDate.length<=24) location=orgOnDate;
-      const below=[];
-      for(let j=d+1;j<nextD;j++){
-        if(CITY.test(L[j])){ location=L[j].replace(CITY,'').replace(/\s{2,}/g,' ').trim(); continue; }
-        below.push(...splitCols(L[j]));
-      }
-      const shortOnes=below.filter(l=>l.length<=55 && !CONTACT.test(l));
-      organization=shortOnes[0]||below[0]||'';
-      title=shortOnes[1]||'';
+    const onDate=stripDates(L[d]);
+    const above=(d-1>prevD && d-1>=0 && !DATELINE.test(L[d-1])) ? L[d-1].trim() : '';
+    const titleOnDate = onDate && TITLE_HINT.test(onDate) && !ORG_HINT.test(onDate);          // riga-data = titolo (ente sotto)
+    const orgOnDate   = onDate && !titleOnDate && (ORG_HINT.test(onDate) || onDate.split(/\s+/).length>=2 || onDate.length>=10); // riga-data = ente (titolo sopra)
+    // La riga sopra la prossima data è il SUO titolo? (pattern Europass) → la riserviamo
+    const nextOnDate = nextD<L.length?stripDates(L[nextD]):'';
+    const nextIsAboveTitle = nextD<L.length && !DATELINE.test(L[nextD-1]) && /[A-Za-zÀ-ÿ]{2,}/.test(nextOnDate)
+                             && (ORG_HINT.test(nextOnDate) || (!TITLE_HINT.test(nextOnDate) && nextOnDate.split(/\s+/).length>=2));
+    const hi = nextIsAboveTitle ? nextD-1 : nextD;
+    let location='', below=[];
+    for(let j=d+1;j<hi;j++){ if(CITY.test(L[j])){ location=L[j].replace(CITY,'').replace(/\s{2,}/g,' ').trim(); continue; } below.push(...splitCols(L[j])); }
+
+    let organization='', title='', desc=[];
+    if(titleOnDate){
+      title=onDate;
+      organization=below.find(l=>ORG_HINT.test(l)) || firstShort(below) || above;
+      desc=below.filter(l=>l!==organization);
+    } else if(orgOnDate){
+      organization=onDate;
+      title=above || below.find(l=>TITLE_HINT.test(l)) || '';
+      desc=below.filter(l=>l!==title);
+    } else {                              // data da sola: l'eventuale testo è luogo; ente/titolo sotto
+      if(onDate && onDate.length<=24) location=location||onDate;
+      organization=firstShort(below)||'';
+      title=below.find(l=>l!==organization && l.length<=55 && !CONTACT.test(l))||'';
       const used=new Set([organization,title].filter(Boolean));
       desc=below.filter(l=>!used.has(l));
     }
-    desc=desc.filter(l=>{ if(CITY.test(l)){ location=l.replace(CITY,'').trim(); return false; } return true; });
-    if(!location){ const cm=organization.split(','); if(cm.length===2 && cm[1].trim().length<=24 && !/\d/.test(cm[1])){ location=cm[1].trim(); organization=cm[0].trim(); } }
-    const description=desc.filter(l=>!CONTACT.test(l)).join(' ').trim();
+    if(!location){ const cm=String(organization).split(','); if(cm.length===2 && cm[1].trim().length<=24 && !/\d/.test(cm[1])){ location=cm[1].trim(); organization=cm[0].trim(); } }
+    const description=desc.filter(l=>l && !CONTACT.test(l)).join(' ').trim();
+    organization=String(organization).trim(); title=String(title).trim();
     if(!organization && !title) return;
     out.push({kind, organization, title, location, start, end, description, tags:[], link:''});
   });
@@ -368,6 +374,31 @@ function parseGeneric(L, defKind, out){
 // successivo solo se quello corrente è già "completo" (ha Stack o Link) → così i trattini
 // DENTRO la descrizione non spezzano il progetto.
 function parseProjects(L, out){
+  // Sceglie il formato: con cue "Stack:/Link:" → A; altrimenti "titolo + descrizione" → B
+  if(L.some(l=>/stack\s*[:：]|tecnolog|technolog|link\s*[:：]/i.test(l))) parseProjectsA(L,out);
+  else parseProjectsB(L,out);
+}
+// Formato B: ogni progetto è una riga-titolo breve seguita da righe di descrizione (senza Stack/Link)
+function parseProjectsB(L, out){
+  const noise=/^(additional projects|altri progetti|other projects|more projects|further projects|see more|progetti aggiuntivi)/i;
+  const projs=[]; let cur=null, globalLink='';
+  for(const raw of L){
+    const line=String(raw).trim(); if(!line) continue;
+    if(noise.test(line)){ cur=null; continue; }                     // nota finale → chiude, non è un progetto
+    const lk=barelink(line);
+    const linkOnly = lk && line.split(/\s+/).length<=2 && line.length<60;
+    if(linkOnly){ if(cur && !cur.link)cur.link=lk; else globalLink=globalLink||lk; continue; }
+    const words=line.split(/\s+/).length;
+    const isTitle = line.length<=72 && words<=9 && !/[.,;:]$/.test(line) && /[A-Za-zÀ-ÿ]/.test(line);
+    if(isTitle && (!cur || cur.desc.length)){ cur={name:line, desc:[], link:lk||''}; projs.push(cur); }
+    else if(cur){ if(lk && !cur.link)cur.link=lk; cur.desc.push(line); }
+    else { cur={name:line, desc:[], link:lk||''}; projs.push(cur); }   // prima riga senza titolo chiaro
+  }
+  projs.forEach(p=>out.push({kind:'project', organization:p.name.slice(0,80), title:'', location:'', start:'', end:'',
+    description:p.desc.join(' ').replace(/\s{2,}/g,' ').trim(), tags:[], link:p.link||globalLink||''}));
+}
+// Formato A: "Titolo — Categoria  Descrizione ... Stack: ...  Link: ..."
+function parseProjectsA(L, out){
   const isLink=l=>/link\s*[:：]/i.test(l) || /https?:\/\//i.test(l);
   const looksTitle=l=>/[—–]/.test(l) && l.length>20;
   let blocks=[], cur=[];
