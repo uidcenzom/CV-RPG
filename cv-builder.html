@@ -86,8 +86,8 @@ details summary{cursor:pointer;color:var(--p1);font-size:14px;font-weight:800;ma
   <!-- STEP 1: UPLOAD -->
   <div class="step">
     <h2><span class="n">1</span> Carica il curriculum</h2>
-    <div id="drop">📄 &nbsp;Trascina qui il PDF / DOCX<br><span style="font-weight:600">oppure clicca per scegliere il file</span></div>
-    <input type="file" id="file" accept=".pdf,.docx" style="display:none">
+    <div id="drop">📄 &nbsp;Trascina qui il PDF / DOCX / JSON<br><span style="font-weight:600">oppure clicca per scegliere il file</span></div>
+    <input type="file" id="file" accept=".pdf,.docx,.json" style="display:none">
     <div id="status"></div>
     <details style="margin-top:14px">
       <summary>Testo estratto (modificabile)</summary>
@@ -141,6 +141,37 @@ const statusEl=$('#status'), entriesEl=$('#entries'), rawEl=$('#rawText');
 const setStatus=t=>statusEl.textContent=t;
 
 // ═══════════ ESTRAZIONE TESTO DA FILE ═══════════
+// Raggruppa gli item in righe per coordinata Y; i gap orizzontali ampi diventano
+// separatori (3 spazi) così il parser distingue i campi sulla stessa riga.
+function itemsToLines(items){
+  const sorted=[...items].sort((a,b)=>(b.y-a.y)||(a.x-b.x));
+  const rows=[]; let cur=null;
+  for(const it of sorted){
+    if(cur && Math.abs(it.y-cur.y)<=3.2) cur.items.push(it);
+    else { cur={y:it.y, items:[it]}; rows.push(cur); }
+  }
+  return rows.map(r=>{
+    const its=r.items.sort((a,b)=>a.x-b.x); let s='';
+    for(let i=0;i<its.length;i++){
+      if(i>0){ const gap=its[i].x-(its[i-1].x+(its[i-1].w||0)); s+= gap>12?'   ':(!s||/\s$/.test(s)?'':' '); }
+      s+=its[i].str;
+    }
+    return s.replace(/\s+$/,'');
+  }).filter(l=>l.trim());
+}
+// Se la pagina è a due colonne, legge prima tutta la colonna sinistra, poi la destra
+function pageToLines(tc, W){
+  const items=tc.items.filter(it=>it.str&&it.str.trim())
+    .map(it=>({str:it.str, x:it.transform[4], y:it.transform[5], w:it.width||0}));
+  if(!items.length) return [];
+  const xs=items.map(it=>it.x).sort((a,b)=>a-b);
+  let boundary=null,bestGap=0;
+  for(let i=1;i<xs.length;i++){const g=xs[i]-xs[i-1],mid=(xs[i]+xs[i-1])/2; if(g>bestGap&&mid>W*0.30&&mid<W*0.72){bestGap=g;boundary=mid;}}
+  const leftN=boundary!=null?items.filter(it=>it.x<boundary).length:0, rightN=items.length-leftN;
+  if(boundary!=null && bestGap>W*0.10 && leftN>4 && rightN>4)
+    return [...itemsToLines(items.filter(it=>it.x<boundary)), ...itemsToLines(items.filter(it=>it.x>=boundary))];
+  return itemsToLines(items);
+}
 async function extractText(file){
   const name=file.name.toLowerCase();
   if(name.endsWith('.pdf')){
@@ -149,14 +180,9 @@ async function extractText(file){
     let out=[];
     for(let i=1;i<=pdf.numPages;i++){
       const page=await pdf.getPage(i);
+      const W=page.getViewport({scale:1}).width;
       const tc=await page.getTextContent();
-      // Ricostruisce le righe raggruppando per coordinata Y
-      const rows={};
-      tc.items.forEach(it=>{
-        const y=Math.round(it.transform[5]);
-        (rows[y]=rows[y]||[]).push(it.str);
-      });
-      Object.keys(rows).map(Number).sort((a,b)=>b-a).forEach(y=>out.push(rows[y].join(' ')));
+      out.push(...pageToLines(tc,W));
     }
     return out.join('\n');
   }
@@ -165,7 +191,10 @@ async function extractText(file){
     const res=await mammoth.extractRawText({arrayBuffer:buf});
     return res.value;
   }
-  throw new Error('Formato non supportato: usa PDF o DOCX');
+  if(name.endsWith('.json')){            // import diretto (JSON Resume o nostro export)
+    return await file.text();
+  }
+  throw new Error('Formato non supportato: usa PDF, DOCX o JSON');
 }
 
 async function handleFile(file){
@@ -187,17 +216,17 @@ async function handleFile(file){
 // ═══════════ PARSING EURISTICO (best-effort, l'utente corregge) ═══════════
 // Parole che identificano un'INTESTAZIONE di sezione (non un titolo di voce!)
 const KW={
-  education:['education','istruzione','formazione','studi','training','academic'],
-  work:['esperienz','work experience','employment','lavoro','impiego','carriera','occupazione','work history','volunteering','volontariato','professional experience'],
-  project:['projects','progetti','portfolio','realizzazioni'],
-  skip:['about me','about','profilo','sommario','summary','skills','competenze','language','lingue','lingua','hobby','interess','interests','contatti','contact','referenze','references','patente','driving','dati personali','personal']
+  education:['education','istruzione','formazione','studi','training','academic','éducation','educacion','educación','formacion','formación','ausbildung','studium','estudios','scolarit','parcours'],
+  work:['esperienz','work experience','employment','lavoro','impiego','carriera','occupazione','work history','employment history','volunteering','volontariato','professional experience','expérience','experience professionnelle','experiencia','experiencia laboral','berufserfahrung','trayectoria'],
+  project:['projects','progetti','portfolio','realizzazioni','proyectos','projets','projekte'],
+  skip:['about me','about','profilo','profile','sommario','summary','skills','competenze','compétences','competencias','language','languages','lingue','lingua','idiomas','langues','sprachen','hobby','interess','interests','intereses','contatti','contact','contacto','referenze','references','referencias','patente','driving','dati personali','personal','perfil','profil','über mich']
 };
 // Parole nel CONTENUTO che suggeriscono il tipo (per CV senza sezioni nette)
-const EDU_HINT=/\b(laurea|diploma|università|universita|master|dottorato|bachelor|degree|scuola|liceo|istituto|perito|maturità|maturita|phd)\b/i;
-const PROJ_HINT=/\b(progetto|project|applicazione|sito web|portfolio|open[- ]?source|hackathon)\b/i;
+const EDU_HINT=/\b(laurea|diploma|università|universita|master|dottorato|bachelor|degree|scuola|liceo|istituto|perito|maturità|maturita|phd|university|université|universidad|universität|hochschule|licence|grado|abitur|baccalaur)\b/i;
+const PROJ_HINT=/\b(progetto|project|projet|proyecto|projekt|applicazione|sito web|website|portfolio|open[- ]?source|hackathon)\b/i;
 const YEAR_G=/\b(19|20)\d{2}\b/g;
-const PRESENT=/\b(oggi|attuale|attualmente|present|current|in corso|tutt'?ora|ad oggi|ongoing|presente)\b/i;
-const MONTH='gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre|gen|feb|mar|apr|mag|giu|lug|ago|set|sett|ott|nov|dic|jan|may|jun|jul|aug|sep|oct|dec';
+const PRESENT=/\b(oggi|attuale|attualmente|present|présent|current|in corso|en cours|tutt'?ora|ad oggi|ongoing|presente|actualidad|actualmente|heute|aktuell|laufend|now|to date|to present)\b/i;
+const MONTH='gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre|gen|feb|mar|apr|mag|giu|lug|ago|set|sett|ott|nov|dic|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec|enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre|janvier|février|fevrier|mars|avril|mai|juin|juillet|aout|août|octobre|novembre|décembre|decembre|januar|februar|märz|marz|juni|juli|oktober|dezember';
 // Riga che contiene una data: anno, gg/mm/aaaa, mm/aaaa o nome di mese
 const DATELINE=new RegExp('\\b(19|20)\\d{2}\\b|\\b\\d{1,2}[\\/.\\-]\\d{1,2}[\\/.\\-]\\d{2,4}\\b|\\b\\d{1,2}[\\/.\\-](19|20)\\d{2}\\b|\\b('+MONTH+')\\b','i');
 const CONTACT=/(@|tel\.?|cell\.?|telefono|phone|\+?\d[\d\s().-]{8,}|c\.f\.|p\.?\s?iva|linkedin|curriculum vitae|nat[oa]\s|date of birth|place of birth|nationality|residen|indirizzo|home\s*:)/i;
@@ -232,7 +261,22 @@ function stripDates(s){
     .replace(/^[\s,\-–—|:]+|[\s,\-–—|:]+$/g,'').trim();
 }
 
+// Import diretto da JSON: nostro formato (array di voci) o standard JSON Resume → dati perfetti
+function structuredFromText(text){
+  const t=String(text).trim(); if(!(t[0]==='{'||t[0]==='[')) return null;
+  let j; try{j=JSON.parse(t);}catch(e){return null;}
+  const yr=s=>{const m=String(s||'').match(/(19|20)\d{2}/);return m?m[0]:'';};
+  const endOf=s=>yr(s)|| (/present|current|oggi|attual/i.test(String(s))?'Oggi':'');
+  if(Array.isArray(j)) return (j.length && (j[0].kind||j[0].organization!==undefined)) ? j : null;
+  const out=[];
+  (j.education||[]).forEach(e=>out.push({kind:'education',organization:e.institution||e.school||'',title:[e.studyType,e.area].filter(Boolean).join(' '),location:e.location||'',start:yr(e.startDate),end:endOf(e.endDate),description:e.summary||(Array.isArray(e.courses)?e.courses.join(', '):''),tags:[],link:e.url||''}));
+  (j.work||j.experience||[]).forEach(e=>out.push({kind:'work',organization:e.name||e.company||e.organization||'',title:e.position||e.title||'',location:e.location||'',start:yr(e.startDate),end:endOf(e.endDate),description:e.summary||(Array.isArray(e.highlights)?e.highlights.join(' '):''),tags:[],link:e.url||''}));
+  (j.projects||[]).forEach(e=>out.push({kind:'project',organization:e.name||'',title:'',location:'',start:'',end:'',description:e.description||(Array.isArray(e.highlights)?e.highlights.join(' '):''),tags:Array.isArray(e.keywords)?e.keywords:[],link:e.url||''}));
+  return out.length?out:null;
+}
+
 function parseCV(text){
+  const structured=structuredFromText(text); if(structured) return structured;
   const lines=text.split(/\r?\n/).map(cleanLine).filter(l=>l.length>1);
   const sections=[]; let cur=null;
   lines.forEach(line=>{
