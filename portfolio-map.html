@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Portfolio World v3.0</title>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -43,6 +43,34 @@ body{background:linear-gradient(160deg,#eef1fb 0%,#f6f0fc 100%);display:flex;fle
 .mclose{background:#f5f7fb;border:1.5px solid #e2e6f0;color:#4a5163;font-family:inherit;font-weight:800;font-size:13px;padding:11px 20px;border-radius:999px;cursor:pointer;transition:.15s;float:right;margin-top:8px}
 .mclose:hover{background:#222a3d;color:#fff;border-color:#222a3d}
 #loading{position:absolute;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;z-index:50;color:#6d6bf6;font-size:16px;font-weight:800;font-family:inherit;border-radius:22px}
+/* ── Responsive ── */
+#wrap{width:min(96vw,844px);min-width:0}
+#gameCanvas{width:100%;max-width:100%;min-width:0;height:auto}
+#zoneLabel{flex:1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+@media (max-width:560px){
+  body{padding:0}
+  #wrap{width:100vw;min-height:100vh;border-radius:0;padding:8px;display:flex;flex-direction:column;justify-content:center}
+  #titlebar{font-size:13px;padding:6px}
+  #zoneLabel,#posLabel{font-size:11px}
+  .pgrid{grid-template-columns:1fr}
+  .mbox{padding:20px 18px}
+  .mtitle{font-size:20px}
+  #modal{border-radius:0}
+}
+/* ── Controlli touch (mobile) ── */
+#touchControls{display:none}
+body.touch #touchControls{display:block}
+body.touch .ch{display:none}
+#joyBase{position:fixed;left:20px;bottom:26px;width:130px;height:130px;border-radius:50%;
+  background:rgba(255,255,255,.30);border:2px solid rgba(109,107,246,.55);backdrop-filter:blur(4px);
+  touch-action:none;z-index:40;box-shadow:0 8px 22px rgba(40,52,90,.20)}
+#joyKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;
+  background:linear-gradient(90deg,#6d6bf6,#9b6bf6);box-shadow:0 4px 14px rgba(109,107,246,.55)}
+#btnEnter{position:fixed;right:22px;bottom:42px;width:88px;height:88px;border-radius:50%;border:none;
+  background:linear-gradient(90deg,#6d6bf6,#9b6bf6);color:#fff;font-family:inherit;font-weight:800;font-size:15px;
+  box-shadow:0 8px 22px rgba(109,107,246,.5);touch-action:none;z-index:40;cursor:pointer;transition:opacity .2s,transform .1s}
+#btnEnter:active{transform:scale(.94)}
+#btnEnter.dim{opacity:.4}
 </style>
 </head>
 <body>
@@ -61,6 +89,10 @@ body{background:linear-gradient(160deg,#eef1fb 0%,#f6f0fc 100%);display:flex;fle
     <a class="importbtn" href="cv-builder.html">✨ Crea il tuo</a>
   </div>
   <div id="modal"><div class="mbox" id="modalContent"></div></div>
+  <div id="touchControls">
+    <div id="joyBase"><div id="joyKnob"></div></div>
+    <button id="btnEnter">Entra</button>
+  </div>
   <div id="loading">Caricamento…</div>
 </div>
 <script>
@@ -601,6 +633,8 @@ function updateCam(){
 
 // ═══ INPUT ═══
 const keys={},justP={};
+const touchMove={active:false,x:0,y:0,id:null};
+let btnEnterEl=null;
 window.addEventListener('keydown',e=>{if(!keys[e.key])justP[e.key]=true;keys[e.key]=true;
   if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();});
 window.addEventListener('keyup',e=>{keys[e.key]=false;});
@@ -639,6 +673,36 @@ function openModal(bi){
 }
 function closeModal(){modalOpen=false;modal.classList.remove('open');}
 window.addEventListener('keydown',e=>{if(e.key==='Escape'&&modalOpen)closeModal();});
+// Chiudi il modale toccando/cliccando lo sfondo (fuori dalla scheda)
+modal.addEventListener('click',e=>{if(e.target===modal)closeModal();});
+
+// ═══ CONTROLLI TOUCH (mobile) ═══
+if('ontouchstart' in window || navigator.maxTouchPoints>0) document.body.classList.add('touch');
+(function setupTouch(){
+  const joyBase=document.getElementById('joyBase'), joyKnob=document.getElementById('joyKnob'), btnEnter=document.getElementById('btnEnter');
+  if(!joyBase) return;
+  btnEnterEl=btnEnter;
+  const R=48; // corsa massima del knob (px)
+  const setKnob=(x,y)=>joyKnob.style.transform=`translate(${x}px,${y}px)`;
+  const findTouch=e=>{for(const t of e.changedTouches)if(t.identifier===touchMove.id)return t;return null;};
+  function start(e){const t=e.changedTouches[0];touchMove.id=t.identifier;touchMove.active=true;move(e);e.preventDefault();}
+  function move(e){
+    if(!touchMove.active)return;
+    const t=findTouch(e); if(!t)return;
+    const r=joyBase.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+    let dx=t.clientX-cx, dy=t.clientY-cy; const d=Math.hypot(dx,dy)||1;
+    if(d>R){dx=dx/d*R; dy=dy/d*R;}
+    setKnob(dx,dy); touchMove.x=dx/R; touchMove.y=dy/R; e.preventDefault();
+  }
+  function end(e){ if(findTouch(e)){touchMove.active=false;touchMove.x=0;touchMove.y=0;touchMove.id=null;setKnob(0,0);} }
+  joyBase.addEventListener('touchstart',start,{passive:false});
+  joyBase.addEventListener('touchmove',move,{passive:false});
+  joyBase.addEventListener('touchend',end); joyBase.addEventListener('touchcancel',end);
+  // Pulsante "Entra": apre i dettagli dell'edificio vicino, o chiude il modale
+  const act=()=>{ if(modalOpen){closeModal();return;} if(hintBldg>=0)openModal(hintBldg); };
+  btnEnter.addEventListener('touchstart',e=>{e.preventDefault();act();},{passive:false});
+  btnEnter.addEventListener('click',act);
+})();
 
 // ═══ UPDATE ═══
 let waterFrame=0,waterAccum=0;
@@ -653,7 +717,9 @@ function update(dt){
   if(keys.ArrowLeft||keys.a||keys.A)dx=-1;
   if(keys.ArrowRight||keys.d||keys.D)dx=1;
   if(dx&&dy){dx*=.707;dy*=.707;}
-  player.moving=dx!==0||dy!==0;
+  // Joystick touch: ha priorità sulla tastiera (vettore analogico, intensità = spinta)
+  if(touchMove.active&&(touchMove.x||touchMove.y)){dx=touchMove.x;dy=touchMove.y;}
+  player.moving=Math.abs(dx)>0.01||Math.abs(dy)>0.01;
   if(dy<0)player.dir=0;else if(dy>0)player.dir=2;else if(dx>0)player.dir=1;else if(dx<0)player.dir=3;
   const nx=player.x+dx*player.spd,ny=player.y+dy*player.spd;
   if(canMove(nx,player.y))player.x=nx;
@@ -663,6 +729,7 @@ function update(dt){
   if(player.moving){player.ft+=dt;if(player.ft>.1){player.frame=(player.frame+1)%6;player.ft=0;}player.iFt=0;player.iFrame=0;}
   else{player.frame=0;player.ft=0;player.iFt+=dt;if(player.iFt>.25){player.iFrame=(player.iFrame+1)%4;player.iFt=0;}}
   hintBldg=nearDoorInfo();
+  if(btnEnterEl) btnEnterEl.classList.toggle('dim',hintBldg<0);
   if(justP.e||justP.E||justP[' ']){if(hintBldg>=0)openModal(hintBldg);}
   Object.keys(justP).forEach(k=>delete justP[k]);
   updateCam();
