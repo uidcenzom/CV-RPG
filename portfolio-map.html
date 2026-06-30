@@ -20,7 +20,7 @@ body{background:linear-gradient(160deg,#eef1fb 0%,#f6f0fc 100%);display:flex;fle
 #ctrlbar{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:12px 6px 4px;color:#6b7488;font-size:13px;font-weight:700}
 .ch{display:flex;align-items:center;gap:6px}
 .kbd{background:#f5f7fb;border:1px solid #e2e6f0;border-bottom:2px solid #d7dcea;padding:3px 9px;border-radius:8px;color:#4a5163;font-size:12px;font-weight:800;font-family:inherit}
-.importbtn{margin-left:auto;color:#6d6bf6;text-decoration:none;border:1.5px solid #d9d8fb;background:#f3f3ff;padding:8px 16px;border-radius:999px;font-weight:800;font-size:13px;transition:.15s}
+.importbtn{margin-left:auto;color:#6d6bf6;text-decoration:none;border:1.5px solid #d9d8fb;background:#f3f3ff;padding:8px 16px;border-radius:999px;font-weight:800;font-size:13px;font-family:inherit;cursor:pointer;transition:.15s}
 .importbtn:hover{background:#6d6bf6;color:#fff;border-color:#6d6bf6}
 #modal{display:none;position:absolute;inset:0;background:rgba(28,32,54,.55);backdrop-filter:blur(3px);align-items:center;justify-content:center;z-index:20;opacity:0;transition:opacity .25s;border-radius:22px}
 #modal.open{display:flex;opacity:1}
@@ -86,7 +86,8 @@ body.touch .ch{display:none}
     <span class="ch"><span class="kbd">↑↓←→</span>Muovi</span>
     <span class="ch"><span class="kbd">E</span>Entra</span>
     <span class="ch"><span class="kbd">ESC</span>Chiudi</span>
-    <a class="importbtn" href="cv-builder.html">✨ Crea il tuo</a>
+    <button class="importbtn" id="regenBtn" type="button">🎲 Rigenera</button>
+    <a class="importbtn" href="cv-builder.html" style="margin-left:8px">✨ Crea il tuo</a>
   </div>
   <div id="modal"><div class="mbox" id="modalContent"></div></div>
   <div id="touchControls">
@@ -161,41 +162,66 @@ function buildDesc(e){
   return meta+(e.description||'');
 }
 
-// ═══ AUTO-LAYOUT: esperienze → edifici posizionati + dimensione mappa ═══
-const BW=9,BH=6,MARGIN=3,TOP=5,GAPX=4,GAPY=6;  // edifici ~15% più piccoli
-function layoutBuildings(exps){
-  const order={education:0,work:1,project:2};
-  const sorted=[...exps].sort((a,b)=>(order[a.kind]??1)-(order[b.kind]??1));
-  const n=Math.max(1,sorted.length);
-  const cols=Math.min(4,Math.max(1,Math.ceil(Math.sqrt(n))));
-  const rows=Math.ceil(sorted.length/cols)||1;
-  const cellW=BW+GAPX, cellH=BH+GAPY;
-  const arr=sorted.map((e,i)=>{
-    const r=Math.floor(i/cols), c=i%cols;
-    const st=kindStyle(e.kind);
-    const nm=String(e.organization||'SENZA NOME').toUpperCase();
-    return {
-      name: nm.length>20 ? nm.slice(0,19)+'…' : nm,
-      kind:e.kind,
-      x:MARGIN+c*cellW, y:TOP+r*cellH, w:BW, h:BH,
-      color:st.color, colorDim:st.colorDim, colorRgb:st.colorRgb,
-      wallStyle:st.wallStyle, roofIdx:st.roofIdx,
-      projects:[{
-        num:String(i+1).padStart(3,'0'),
-        type:st.label,
-        name:String(e.title||e.organization||''),
-        desc:buildDesc(e),
-        tags:Array.isArray(e.tags)?e.tags:[],
-        link:e.link||''
-      }]
-    };
-  });
-  MW=Math.max(24, MARGIN*2+cols*cellW);
-  MH=Math.max(18, TOP+rows*cellH+4);
+// ═══ RNG DETERMINISTICO (seminato dai dati → mondo stabile e condivisibile) ═══
+function strHash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function makeRng(seed){const f=mulberry32(seed>>>0);const r=()=>f();r.int=n=>Math.floor(f()*n);r.pick=a=>a[Math.floor(f()*a.length)];return r;}
+
+// ═══ LAYOUT e TEMI disponibili (scelti dal seme) ═══
+const LAYOUTS=['grid','districts','timeline'];
+const THEMES=[
+  {name:'Prato',   edge:'#3a6830', tint:null,                     tree:7, rock:3, flower:7, night:false},
+  {name:'Bosco',   edge:'#2c5226', tint:'rgba(18,55,22,0.22)',    tree:17,rock:3, flower:9, night:false},
+  {name:'Notte',   edge:'#10131f', tint:'rgba(18,26,66,0.44)',    tree:8, rock:3, flower:5, night:true},
+  {name:'Deserto', edge:'#7a6a3a', tint:'rgba(196,156,84,0.32)',  tree:2, rock:10,flower:3, night:false},
+  {name:'Neve',    edge:'#cdd6e6', tint:'rgba(228,238,255,0.46)', tree:4, rock:6, flower:2, night:false},
+];
+
+// ═══ ESPERIENZE → EDIFICI ═══
+const BW=9,BH=6,MARGIN=3,TOP=5,GAPX=4,GAPY=6;
+const MAXW=BW+2, MAXH=BH+1, CELLW=MAXW+GAPX, CELLH=MAXH+GAPY;  // celle uniformi: anche edifici grandi non si toccano
+function expYear(s){const m=String(s||'').match(/(19|20)\d{2}/);return m?+m[0]:null;}
+function expDuration(e){let a=expYear(e.start),b=expYear(e.end); if(b==null&&/oggi|attual|present|current|in corso|ongoing|presente/i.test(String(e.end)))b=a!=null?a+3:null; return (a!=null&&b!=null)?Math.max(0,b-a):1;}
+
+function makeBuilding(e,i,rng){
+  const st=kindStyle(e.kind);
+  const nm=String(e.organization||'SENZA NOME').toUpperCase();
+  const boost=Math.min(2,Math.floor(expDuration(e)/3)); // esperienze lunghe → edifici più grandi
+  return {
+    name: nm.length>20?nm.slice(0,19)+'…':nm, kind:e.kind,
+    w:BW+boost, h:BH+(boost>=2?1:0),
+    color:st.color, colorDim:st.colorDim, colorRgb:st.colorRgb,
+    wallStyle:rng.pick([0,1,3]), roofIdx:st.roofIdx,   // texture muro variata
+    projects:[{num:String(i+1).padStart(3,'0'),type:st.label,name:String(e.title||e.organization||''),desc:buildDesc(e),tags:Array.isArray(e.tags)?e.tags:[],link:e.link||''}]
+  };
+}
+
+function layoutBuildings(exps, layout, rng){
+  const kindOrder={education:0,work:1,project:2};
+  const ordered = layout==='timeline'
+    ? [...exps].sort((a,b)=>((expYear(a.start)??9999)-(expYear(b.start)??9999)))
+    : [...exps].sort((a,b)=>((kindOrder[a.kind]??1)-(kindOrder[b.kind]??1)));
+  const arr=ordered.map((e,i)=>makeBuilding(e,i,rng));
+  const n=arr.length;
+  if(layout==='districts'){           // quartieri: una colonna per tipo
+    const kinds=['education','work','project'].filter(k=>arr.some(b=>b.kind===k));
+    const col={}; kinds.forEach((k,ci)=>col[k]=ci); const cnt={};
+    arr.forEach(b=>{const ci=col[b.kind], ri=(cnt[b.kind]=(cnt[b.kind]||0)); cnt[b.kind]++; b.x=MARGIN+ci*CELLW; b.y=TOP+ri*CELLH;});
+    const maxRows=Math.max(1,...kinds.map(k=>arr.filter(b=>b.kind===k).length));
+    MW=Math.max(24,MARGIN*2+kinds.length*CELLW); MH=Math.max(18,TOP+maxRows*CELLH+4);
+  } else if(layout==='timeline'){     // serpentina cronologica
+    const cols=Math.min(4,Math.max(2,Math.ceil(Math.sqrt(n))));
+    arr.forEach((b,i)=>{const r=Math.floor(i/cols); let c=i%cols; if(r%2)c=cols-1-c; b.x=MARGIN+c*CELLW; b.y=TOP+r*CELLH;});
+    const rows=Math.ceil(n/cols)||1; MW=Math.max(24,MARGIN*2+cols*CELLW); MH=Math.max(18,TOP+rows*CELLH+4);
+  } else {                            // griglia (campus)
+    const cols=Math.min(4,Math.max(1,Math.ceil(Math.sqrt(n))));
+    arr.forEach((b,i)=>{const r=Math.floor(i/cols),c=i%cols; b.x=MARGIN+c*CELLW; b.y=TOP+r*CELLH;});
+    const rows=Math.ceil(n/cols)||1; MW=Math.max(24,MARGIN*2+cols*CELLW); MH=Math.max(18,TOP+rows*CELLH+4);
+  }
   return arr;
 }
 
-// Decodifica i dati eventualmente contenuti nel link condiviso (#lz=... o #p=...)
+// ═══ DECODE LINK CONDIVISO + STATO MONDO ═══
 function b64urlDecode(s){s=s.replace(/-/g,'+').replace(/_/g,'/');return decodeURIComponent(escape(atob(s)));}
 function decodeSharedHash(){
   const h=location.hash.slice(1); if(!h)return null;
@@ -206,29 +232,56 @@ function decodeSharedHash(){
   }catch(e){}
   return null;
 }
-let experiences=DEMO_EXPERIENCES, isShared=false;
-const shared=decodeSharedHash();
-if(shared && Array.isArray(shared) && shared.length){ experiences=shared; isShared=true; }
-else { try{
-  const raw=localStorage.getItem('pw_experiences');
-  if(raw){const p=JSON.parse(raw); if(Array.isArray(p)&&p.length) experiences=p;}
-}catch(e){} }
-const buildings=layoutBuildings(experiences);
+function encodeShare(e,v){const json=JSON.stringify({e,v}); if(window.LZString)return 'lz='+LZString.compressToEncodedURIComponent(json); return 'p='+btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 
-// ═══ MAP (generata in modo adattivo dal numero/posizione degli edifici) ═══
-function makeMap(){
+let experiences=DEMO_EXPERIENCES, isShared=false, initialVariant=0;
+(function loadData(){
+  const norm=p=>!p?null:(Array.isArray(p)?{e:p,v:0}:(Array.isArray(p.e)?{e:p.e,v:+p.v||0}:null));
+  const ns=norm(decodeSharedHash());
+  if(ns && ns.e.length){ experiences=ns.e; isShared=true; initialVariant=ns.v; return; }
+  try{
+    const raw=localStorage.getItem('pw_experiences');
+    if(raw){const p=JSON.parse(raw); if(Array.isArray(p)&&p.length) experiences=p;}
+    const pv=parseInt(localStorage.getItem('pw_variant')||'0',10); if(!isNaN(pv)) initialVariant=pv;
+  }catch(e){}
+})();
+const seedBase=strHash(experiences.map(e=>String(e.organization)+'|'+e.kind+'|'+String(e.start)).join(';'));
+let worldVariant=0, theme=THEMES[0], layoutName='grid';
+let buildings=[], MAP=[];
+
+function persistVariant(){
+  try{localStorage.setItem('pw_variant',String(worldVariant));}catch(e){}
+  if(isShared){ try{history.replaceState(null,'','#'+encodeShare(experiences,worldVariant));}catch(e){} }
+}
+// (Ri)costruisce l'intero mondo per una data variante (deterministico)
+function buildWorld(v){
+  worldVariant=((Math.round(v)%1000)+1000)%1000;
+  const rng=makeRng((seedBase ^ Math.imul(worldVariant+1,2654435761))>>>0);
+  layoutName=rng.pick(LAYOUTS);
+  theme=rng.pick(THEMES);
+  const decorSalt=rng.int(1000000000);
+  buildings=layoutBuildings(experiences, layoutName, rng);
+  MAP=makeMap(theme,decorSalt);
+  const b0=buildings[0];
+  player.x=(b0.doorX+1)*TILE; player.y=(b0.doorY+3)*TILE; player.dir=0; player.moving=false;
+  bldgSprites.length=0;
+  if(IMG.bwalls && IMG.bwalls.complete) prerenderBuildings();
+  treePosCache.length=0; waterPosCache=null; particles.length=0;
+  hintBldg=-1; if(modalOpen) closeModal();
+  cam.x=Math.max(0,Math.min(MW*TILE-CW,player.x-CW/2));
+  cam.y=Math.max(0,Math.min(MH*TILE-CH,player.y-CH/2));
+}
+
+// ═══ MAP (generata da edifici + tema, decorazioni seminate) ═══
+function makeMap(theme,decorSalt){
   const m=Array.from({length:MH},()=>Array(MW).fill(T.G));
   const s=(y,x,t)=>{if(y>=0&&y<MH&&x>=0&&x<MW)m[y][x]=t};
   const h=(x,y)=>(((x*374761393+y*668265263)>>>0)%3);
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){const v=h(x,y);if(v===1)m[y][x]=T.G2;else if(v===2)m[y][x]=T.G3;}
-  // Bordo di alberi
   for(let y=0;y<MH;y++)for(let x=0;x<MW;x++)if(y<2||y>=MH-2||x<2||x>=MW-2)s(y,x,T.TR);
 
-  // Footprint degli edifici (+1 margine) → zone riservate, niente decorazioni sopra
   const reserved=Array.from({length:MH},()=>Array(MW).fill(false));
   const reserve=(y,x)=>{if(y>=0&&y<MH&&x>=0&&x<MW)reserved[y][x]=true;};
-
-  // Posa edifici (tetto + mura + porta + insegna)
   buildings.forEach(b=>{
     for(let x=b.x;x<b.x+b.w;x++)s(b.y,x,T.RF);
     for(let y=b.y+1;y<b.y+b.h;y++)for(let x=b.x;x<b.x+b.w;x++)s(y,x,T.WL);
@@ -240,31 +293,23 @@ function makeMap(){
     for(let y=b.y-1;y<=b.y+b.h+2;y++)for(let x=b.x-1;x<=b.x+b.w;x++)reserve(y,x);
   });
 
-  // Strade: un viale orizzontale sotto ogni fila di edifici + connettore verticale da ogni porta
-  const avenues=[...new Set(buildings.map(b=>b.y))].sort((a,b)=>a-b).map(by=>by+BH+2);
+  // Strade: viale orizzontale sotto ogni fila + connettore da ogni porta + spina sinistra
+  const avenues=[...new Set(buildings.map(b=>b.y))].sort((a,b)=>a-b).map(by=>by+MAXH+2);
   avenues.forEach(avY=>{for(let x=2;x<MW-2;x++){s(avY,x,T.P);s(avY+1,x,T.P);}});
-  buildings.forEach(b=>{
-    const avY=b.y+BH+2;
-    for(let y=b.y+b.h;y<=avY+1;y++){s(y,b.doorX,T.P);s(y,b.doorX+1,T.P);}
-  });
-  // Spina verticale a sinistra che collega tutti i viali
-  if(avenues.length>1){
-    const minY=Math.min(...avenues),maxY=Math.max(...avenues)+1;
-    for(let y=minY;y<=maxY;y++){s(y,2,T.P);s(y,3,T.P);}
-  }
+  buildings.forEach(b=>{const avY=b.y+MAXH+2; for(let y=b.y+b.h;y<=avY+1;y++){s(y,b.doorX,T.P);s(y,b.doorX+1,T.P);}});
+  if(avenues.length>1){const minY=Math.min(...avenues),maxY=Math.max(...avenues)+1; for(let y=minY;y<=maxY;y++){s(y,2,T.P);s(y,3,T.P);}}
 
-  // Decorazioni procedurali su erba libera (deterministiche)
-  const sc=(x,y)=>(((x*73856093)^(y*19349663))>>>0)%100;
+  // Decorazioni: densità/mix dipendono dal tema, posizione dal seme (decorSalt)
+  const sc=(x,y)=>(((x*73856093)^(y*19349663)^decorSalt)>>>0)%100;
+  const tT=theme.tree, tR=tT+theme.rock, tF=tR+theme.flower;
   for(let y=2;y<MH-2;y++)for(let x=2;x<MW-2;x++){
     if(reserved[y][x])continue;
-    const t=m[y][x];
-    if(t!==T.G&&t!==T.G2&&t!==T.G3)continue; // non sovrascrivere strade
+    const t=m[y][x]; if(t!==T.G&&t!==T.G2&&t!==T.G3)continue;
     const r=sc(x,y);
-    if(r<6)s(y,x,T.TR); else if(r<9)s(y,x,T.RK); else if(r<15)s(y,x,T.FL);
+    if(r<tT)s(y,x,T.TR); else if(r<tR)s(y,x,T.RK); else if(r<tF)s(y,x,T.FL);
   }
   return m;
 }
-const MAP=makeMap();
 
 function getBuildingByDoor(tx,ty){
   for(let i=0;i<buildings.length;i++){
@@ -587,7 +632,7 @@ const lx=lc.getContext('2d');
 
 function renderLighting(camX,camY,ppx,ppy,t){
   lx.clearRect(0,0,CW,CH);
-  lx.fillStyle='rgba(5,8,25,0.15)';
+  lx.fillStyle=(theme&&theme.night)?'rgba(6,9,30,0.55)':'rgba(5,8,25,0.15)';
   lx.fillRect(0,0,CW,CH);
   lx.globalCompositeOperation='destination-out';
   // Player
@@ -619,8 +664,7 @@ function renderLighting(camX,camY,ppx,ppy,t){
 }
 
 // ═══ PLAYER STATE ═══
-const startB=buildings[0];
-const player={x:(startB.doorX+1)*TILE,y:(startB.doorY+3)*TILE,w:16,h:26,spd:2.6,dir:0,frame:0,ft:0,moving:false,iFrame:0,iFt:0};
+const player={x:0,y:0,w:16,h:26,spd:2.6,dir:2,frame:0,ft:0,moving:false,iFrame:0,iFt:0}; // posizione impostata da buildWorld()
 let shake={x:0,y:0,t:0};
 function doShake(){shake.t=.35;}
 function updateShake(dt){if(shake.t>0){shake.t-=dt;const s=shake.t*5;shake.x=(Math.random()-.5)*s;shake.y=(Math.random()-.5)*s;}else{shake.x=shake.y=0;}}
@@ -743,7 +787,7 @@ function update(dt){
 // ═══ RENDER ═══
 function render(){
   const cx=Math.round(cam.x+shake.x),cy=Math.round(cam.y+shake.y);
-  ctx.fillStyle='#3a6830';ctx.fillRect(0,0,CW,CH);
+  ctx.fillStyle=(theme&&theme.edge)||'#3a6830';ctx.fillRect(0,0,CW,CH);
   const sx=Math.max(0,Math.floor(cx/TILE)),ex=Math.min(MW-1,Math.ceil((cx+CW)/TILE));
   const sy=Math.max(0,Math.floor(cy/TILE)),ey=Math.min(MH-1,Math.ceil((cy+CH)/TILE));
 
@@ -808,6 +852,9 @@ function render(){
 
   // ── 3. WATER RIPPLE PARTICLES ──
   particles.filter(p=>p.type==='ripple').forEach(p=>p.draw(cx,cy));
+
+  // ── 3b. TINTA DEL TEMA (atmosfera: bosco/notte/deserto/neve) ──
+  if(theme&&theme.tint){ctx.fillStyle=theme.tint;ctx.fillRect(0,0,CW,CH);}
 
   // ── 4. NEON SIGNS / NAME PLATES (above buildings) ──
   buildings.forEach((b,i)=>{
@@ -900,8 +947,9 @@ function loop(ts){
 loadImages(()=>{
   document.getElementById('loading').style.display='none';
   buildFloorCache();
-  prerenderBuildings();
-  cam.x=player.x-CW/2;cam.y=player.y-CH/2;
+  const regenBtn=document.getElementById('regenBtn');
+  if(regenBtn) regenBtn.onclick=()=>{ buildWorld(worldVariant+1); persistVariant(); };
+  buildWorld(initialVariant);   // costruisce edifici + mappa + sprite + giocatore + camera
   requestAnimationFrame(loop);
 });
 </script>
