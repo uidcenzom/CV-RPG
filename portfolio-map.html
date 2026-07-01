@@ -71,6 +71,27 @@ body.touch .ch{display:none}
   box-shadow:0 8px 22px rgba(109,107,246,.5);touch-action:none;z-index:40;cursor:pointer;transition:opacity .2s,transform .1s}
 #btnEnter:active{transform:scale(.94)}
 #btnEnter.dim{opacity:.4}
+/* ── Modalità Modifica ── */
+#editBar{display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 6px 2px}
+#editBar .lab{font-weight:800;color:#6d6bf6;font-size:14px}
+#editBar button{font-family:inherit;font-weight:800;font-size:13px;border-radius:10px;padding:8px 14px;cursor:pointer;border:1.5px solid #e2e6f0;background:#f5f7fb;color:#222a3d;transition:.15s}
+#editBar button:hover{border-color:#6d6bf6;color:#6d6bf6}
+#editBar #editSave{background:linear-gradient(90deg,#6d6bf6,#9b6bf6);color:#fff;border:none}
+#editBar #editPlay{background:#16a34a;color:#fff;border:none}
+#editBar a{margin-left:auto;font-size:12px;color:#9aa2b4;text-decoration:none;font-weight:700}
+#editPanel{display:none;position:absolute;inset:0;z-index:40;background:rgba(28,32,54,.55);backdrop-filter:blur(3px);align-items:center;justify-content:center;border-radius:22px}
+#editPanel.open{display:flex}
+.epbox{background:#fff;border-radius:18px;box-shadow:0 24px 60px rgba(20,24,45,.45);padding:22px 24px;width:440px;max-width:92%;max-height:90%;overflow:auto}
+.epbox h3{font-size:19px;font-weight:900;margin-bottom:14px;color:#222a3d}
+.epbox label{display:block;font-size:12.5px;font-weight:700;color:#6b7488;margin-bottom:10px}
+.epbox input,.epbox select,.epbox textarea{width:100%;margin-top:4px;background:#f5f7fb;border:1.5px solid #e7eaf2;border-radius:10px;padding:9px 11px;font-family:inherit;font-size:14px;color:#222a3d}
+.epbox textarea{min-height:60px;resize:vertical}
+.eprow{display:flex;gap:10px}.eprow label{flex:1}
+.epbtns{display:flex;align-items:center;gap:8px;margin-top:6px}
+.epbtns button{font-family:inherit;font-weight:800;font-size:13px;border-radius:10px;padding:9px 16px;cursor:pointer;border:1.5px solid #e2e6f0;background:#f5f7fb;color:#222a3d}
+.epbtns .prim{background:linear-gradient(90deg,#6d6bf6,#9b6bf6);color:#fff;border:none}
+.epbtns .del{background:#fff5f5;border-color:#f3c2c2;color:#ef4444}
+body.editing #touchControls{display:none!important}
 </style>
 </head>
 <body>
@@ -80,6 +101,13 @@ body.touch .ch{display:none}
     <span id="zoneLabel">Mappa principale</span>
     <span id="posLabel">(0,0)</span>
   </div>
+  <div id="editBar">
+    <span class="lab">✏️ Modifica</span>
+    <button id="editAdd">➕ Aggiungi edificio</button>
+    <button id="editSave">💾 Salva</button>
+    <button id="editPlay">▶ Prova</button>
+    <a href="editor.html">Editor tile avanzato →</a>
+  </div>
   <canvas id="gameCanvas" width="820" height="500"></canvas>
   <div id="ctrlbar">
     <span class="ch"><span class="kbd">W</span><span class="kbd">A</span><span class="kbd">S</span><span class="kbd">D</span>Muovi</span>
@@ -88,9 +116,20 @@ body.touch .ch{display:none}
     <span class="ch"><span class="kbd">ESC</span>Chiudi</span>
     <button class="importbtn" id="regenBtn" type="button">🎲 Rigenera</button>
     <a class="importbtn" href="cv-builder.html" style="margin-left:8px">✨ Crea il tuo</a>
-    <a class="importbtn" href="editor.html" style="margin-left:8px">🛠️ Editor</a>
+    <button class="importbtn" id="editToggle" type="button" style="margin-left:8px">🛠️ Modifica</button>
   </div>
   <div id="modal"><div class="mbox" id="modalContent"></div></div>
+  <div id="editPanel"><div class="epbox">
+    <h3>Modifica edificio</h3>
+    <label>Ente / Nome<input id="epOrg"></label>
+    <label>Titolo / Ruolo<input id="epTitle"></label>
+    <label>Tipo<select id="epKind"><option value="education">Studi</option><option value="work">Lavoro</option><option value="project">Progetto</option></select></label>
+    <div class="eprow"><label>Inizio<input id="epStart"></label><label>Fine<input id="epEnd"></label></div>
+    <label>Descrizione<textarea id="epDesc"></textarea></label>
+    <label>Competenze / Tag (virgola)<input id="epTags"></label>
+    <label>Link<input id="epLink"></label>
+    <div class="epbtns"><button id="epDelete" class="del">Elimina</button><span style="flex:1"></span><button id="epClose">Annulla</button><button id="epSave" class="prim">Salva</button></div>
+  </div></div>
   <div id="touchControls">
     <div id="joyBase"><div id="joyKnob"></div></div>
     <button id="btnEnter">Entra</button>
@@ -107,7 +146,7 @@ let MW=48,MH=30; // ridimensionati dinamicamente da layoutBuildings()
 // ═══ TILESET CONFIGURABILE (pacchetti / URL / reskin per chi forka) ═══
 // Un tileset è una CARTELLA (locale o URL) con la STESSA struttura di 'tiles/'.
 // Priorità della base: link condiviso (#t) > localStorage > window.PW_TILESET (config.js) > 'tiles/'.
-const SHARED=(function(){const p=decodeSharedHash();if(!p)return null;return Array.isArray(p)?{e:p,v:0,t:'',m:null}:{e:p.e,v:+p.v||0,t:p.t||'',m:p.m||null};})();
+const SHARED=(function(){const p=decodeSharedHash();if(!p)return null;return Array.isArray(p)?{e:p,v:0,t:'',m:null,s:null}:{e:p.e,v:+p.v||0,t:p.t||'',m:p.m||null,s:p.s||null};})();
 function resolveTileset(){
   let base=(SHARED&&SHARED.t)||'';
   if(!base){try{base=localStorage.getItem('pw_tileset')||'';}catch(e){}}
@@ -214,12 +253,19 @@ function makeBuilding(e,i,rng){
   const nm=String(e.organization||'SENZA NOME').toUpperCase();
   const boost=Math.min(2,Math.floor(expDuration(e)/3)); // esperienze lunghe → edifici più grandi
   return {
-    name: nm.length>20?nm.slice(0,19)+'…':nm, kind:e.kind,
+    name: nm.length>20?nm.slice(0,19)+'…':nm, kind:e.kind, exp:e, x:0, y:0,
     w:BW+boost, h:BH+(boost>=2?1:0),
     color:st.color, colorDim:st.colorDim, colorRgb:st.colorRgb,
     wallStyle:rng.pick([0,1,3]), roofIdx:st.roofIdx,   // texture muro variata
     projects:[{num:String(i+1).padStart(3,'0'),type:st.label,name:String(e.title||e.organization||''),desc:buildDesc(e),tags:Array.isArray(e.tags)?e.tags:[],link:e.link||''}]
   };
+}
+// Aggiorna i campi visivi di un edificio dai dati dell'esperienza (dopo una modifica)
+function refreshBuilding(b,i){
+  const e=b.exp, st=kindStyle(e.kind), nm=String(e.organization||'SENZA NOME').toUpperCase();
+  b.kind=e.kind; b.name=nm.length>20?nm.slice(0,19)+'…':nm;
+  b.color=st.color; b.colorDim=st.colorDim; b.colorRgb=st.colorRgb; b.roofIdx=st.roofIdx;
+  b.projects=[{num:String((i||0)+1).padStart(3,'0'),type:st.label,name:String(e.title||e.organization||''),desc:buildDesc(e),tags:Array.isArray(e.tags)?e.tags:[],link:e.link||''}];
 }
 
 function layoutBuildings(exps, layout, rng){
@@ -258,7 +304,7 @@ function decodeSharedHash(){
   }catch(e){}
   return null;
 }
-function encodeShare(e,v,t){const o={e,v}; if(t && t!=='tiles/') o.t=t; const json=JSON.stringify(o); if(window.LZString)return 'lz='+LZString.compressToEncodedURIComponent(json); return 'p='+btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function encodeShare(e,v,t,s){const o={e,v}; if(t && t!=='tiles/') o.t=t; if(s) o.s=s; const json=JSON.stringify(o); if(window.LZString)return 'lz='+LZString.compressToEncodedURIComponent(json); return 'p='+btoa(unescape(encodeURIComponent(json))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 
 let experiences=DEMO_EXPERIENCES, isShared=false, initialVariant=0;
 (function loadData(){
@@ -270,8 +316,11 @@ let experiences=DEMO_EXPERIENCES, isShared=false, initialVariant=0;
   }catch(e){}
 })();
 const seedBase=strHash(experiences.map(e=>String(e.organization)+'|'+e.kind+'|'+String(e.start)).join(';'));
-let worldVariant=0, theme=THEMES[0], layoutName='grid';
+let worldVariant=0, theme=THEMES[0], layoutName='grid', curDecorSalt=0;
 let buildings=[], MAP=[];
+// Scena modificabile (edifici con posizioni esplicite): dal link (s) o localStorage
+let SCENE=(function(){ if(SHARED&&SHARED.s)return SHARED.s; try{const r=localStorage.getItem('pw_scene'); if(r){const j=JSON.parse(r); if(j&&Array.isArray(j.items)&&j.items.length)return j;}}catch(e){} return null; })();
+let editMode=/(?:[#&?])edit\b/i.test(location.href);
 
 function persistVariant(){
   try{localStorage.setItem('pw_variant',String(worldVariant));}catch(e){}
@@ -306,16 +355,42 @@ function nearPortal(){
   return -1;
 }
 
+// Dimensiona la mappa in base agli edifici presenti (scena modificata)
+function fitMapToBuildings(){
+  let maxX=0,maxY=0; buildings.forEach(b=>{maxX=Math.max(maxX,b.x+b.w);maxY=Math.max(maxY,b.y+b.h);});
+  MW=Math.max(24,maxX+MARGIN+2); MH=Math.max(18,maxY+GAPY+4);
+}
+// Ricostruisce mappa (footprint/strade/porte) e sprite dopo una modifica in edit
+function rebuildAfterEdit(){ fitMapToBuildings(); MAP=makeMap(theme,curDecorSalt); bldgSprites.length=0; if(IMG.bwalls&&IMG.bwalls.complete)prerenderBuildings(); }
+// Serializza gli edifici correnti in una scena salvabile
+function syncScene(){ SCENE={theme:THEMES.indexOf(theme),decorSalt:curDecorSalt,items:buildings.map(b=>({e:b.exp,x:b.x,y:b.y}))}; }
+
+// Costruisce il mondo da una scena salvata (posizioni esplicite)
+function buildSceneWorld(){
+  const rng=makeRng((seedBase^0x9e3779b1)>>>0);
+  theme=THEMES[((SCENE.theme|0)%THEMES.length+THEMES.length)%THEMES.length]||THEMES[0];
+  curDecorSalt=SCENE.decorSalt||rng.int(1000000000);
+  buildings=SCENE.items.map((it,i)=>{const b=makeBuilding(it.e,i,rng); b.x=it.x; b.y=it.y; return b;});
+  fitMapToBuildings();
+  MAP=makeMap(theme,curDecorSalt);
+  const b0=buildings[0]||{doorX:Math.floor(MW/2),doorY:Math.floor(MH/2)};
+  player.x=(b0.doorX+1)*TILE; player.y=(b0.doorY+3)*TILE; player.dir=0; player.moving=false;
+  bldgSprites.length=0; if(IMG.bwalls&&IMG.bwalls.complete)prerenderBuildings();
+  treePosCache.length=0; waterPosCache=null; particles.length=0; hintBldg=-1; if(modalOpen)closeModal();
+  cam.x=Math.max(0,Math.min(MW*TILE-CW,player.x-CW/2)); cam.y=Math.max(0,Math.min(MH*TILE-CH,player.y-CH/2));
+}
+
 // (Ri)costruisce l'intero mondo per una data variante (deterministico)
 function buildWorld(v){
   if(customMode){ buildCustomWorld(); return; }
+  if(SCENE&&SCENE.items&&SCENE.items.length){ buildSceneWorld(); return; }
   worldVariant=((Math.round(v)%1000)+1000)%1000;
   const rng=makeRng((seedBase ^ Math.imul(worldVariant+1,2654435761))>>>0);
   layoutName=rng.pick(LAYOUTS);
   theme=rng.pick(THEMES);
-  const decorSalt=rng.int(1000000000);
+  curDecorSalt=rng.int(1000000000);
   buildings=layoutBuildings(experiences, layoutName, rng);
-  MAP=makeMap(theme,decorSalt);
+  MAP=makeMap(theme,curDecorSalt);
   const b0=buildings[0];
   player.x=(b0.doorX+1)*TILE; player.y=(b0.doorY+3)*TILE; player.dir=0; player.moving=false;
   bldgSprites.length=0;
@@ -813,6 +888,14 @@ function update(dt){
   if(waterAccum>.12){waterFrame=(waterFrame+1)%6;waterAccum=0;}
   updateShake(dt);spawnParticles(dt,time);
   if(modalOpen){Object.keys(justP).forEach(k=>delete justP[k]);return;}
+  if(editMode){ // in modifica: le frecce/WASD spostano la telecamera, niente giocatore
+    let dx=0,dy=0;
+    if(keys.ArrowUp||keys.w||keys.W)dy=-1; if(keys.ArrowDown||keys.s||keys.S)dy=1;
+    if(keys.ArrowLeft||keys.a||keys.A)dx=-1; if(keys.ArrowRight||keys.d||keys.D)dx=1;
+    cam.x=Math.max(0,Math.min(Math.max(0,MW*TILE-CW),cam.x+dx*7));
+    cam.y=Math.max(0,Math.min(Math.max(0,MH*TILE-CH),cam.y+dy*7));
+    Object.keys(justP).forEach(k=>delete justP[k]); return;
+  }
   let dx=0,dy=0;
   if(keys.ArrowUp||keys.w||keys.W)dy=-1;
   if(keys.ArrowDown||keys.s||keys.S)dy=1;
@@ -1032,6 +1115,15 @@ function render(){
   const vg=ctx.createRadialGradient(CW/2,CH/2,CH*.35,CW/2,CH/2,CH*1.1);
   vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,8,.25)');
   ctx.fillStyle=vg;ctx.fillRect(0,0,CW,CH);
+
+  // ── MODALITÀ MODIFICA: contorni edifici + banner ──
+  if(editMode){
+    buildings.forEach(b=>{const bx=b.x*TILE-cx,by=(b.y-2)*TILE-cy,bw=b.w*TILE,bh=(b.h+2)*TILE;
+      ctx.save();ctx.setLineDash([6,4]);ctx.strokeStyle=`rgba(${b.colorRgb},.9)`;ctx.lineWidth=2;ctx.strokeRect(bx,by,bw,bh);ctx.restore();});
+    ctx.save();ctx.fillStyle='rgba(109,107,246,.94)';ctx.fillRect(0,0,CW,26);
+    ctx.fillStyle='#fff';ctx.font='bold 12px "Nunito",system-ui,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('✏️ MODIFICA · trascina gli edifici · clicca per modificare · ➕ aggiungi · 💾 salva',CW/2,13);ctx.restore();
+  }
 }
 
 function drawMinimap(cx,cy){
@@ -1066,6 +1158,49 @@ function loop(ts){
   update(dt);render();requestAnimationFrame(loop);
 }
 
+// ═══════════ MODALITÀ MODIFICA (sposta/aggiungi/modifica/elimina edifici) ═══════════
+let dragI=-1,dragOX=0,dragOY=0,dragMoved=false,editPanelOpen=false,editI=-1;
+const $ed=id=>document.getElementById(id);
+function canvasToWorld(clientX,clientY){const r=canvas.getBoundingClientRect();const px=(clientX-r.left)*(canvas.width/r.width)+Math.round(cam.x),py=(clientY-r.top)*(canvas.height/r.height)+Math.round(cam.y);return{tx:px/TILE,ty:py/TILE};}
+function buildingAt(tx,ty){for(let i=buildings.length-1;i>=0;i--){const b=buildings[i];if(tx>=b.x-0.5&&tx<=b.x+b.w+0.5&&ty>=b.y-2.5&&ty<=b.y+b.h+0.5)return i;}return -1;}
+function updateSpritePos(i){const b=buildings[i],bs=bldgSprites[i];if(!bs)return;bs.dx=b.x*TILE-TILE;bs.dy=b.y*TILE-Math.round(TILE*2.5);bs.sortY=(b.y+b.h-1)*TILE+TILE;}
+function edDown(cx,cy){if(!editMode||modalOpen||editPanelOpen)return false;const w=canvasToWorld(cx,cy),i=buildingAt(w.tx,w.ty);if(i>=0){dragI=i;dragOX=w.tx-buildings[i].x;dragOY=w.ty-buildings[i].y;dragMoved=false;return true;}return false;}
+function edMove(cx,cy){if(dragI<0)return;const w=canvasToWorld(cx,cy),b=buildings[dragI];const nx=Math.max(2,Math.min(MW-b.w-2,Math.round(w.tx-dragOX))),ny=Math.max(3,Math.min(MH-b.h-3,Math.round(w.ty-dragOY)));if(nx!==b.x||ny!==b.y){b.x=nx;b.y=ny;b.doorX=b.x+Math.floor(b.w/2);b.doorY=b.y+b.h-1;dragMoved=true;updateSpritePos(dragI);}}
+function edUp(){if(dragI<0)return;const i=dragI;dragI=-1;if(dragMoved){rebuildAfterEdit();syncScene();}else openEditPanel(i);}
+canvas.addEventListener('mousedown',e=>{if(edDown(e.clientX,e.clientY))e.preventDefault();});
+window.addEventListener('mousemove',e=>{if(dragI>=0)edMove(e.clientX,e.clientY);});
+window.addEventListener('mouseup',edUp);
+canvas.addEventListener('touchstart',e=>{if(editMode&&e.touches[0]&&edDown(e.touches[0].clientX,e.touches[0].clientY))e.preventDefault();},{passive:false});
+canvas.addEventListener('touchmove',e=>{if(dragI>=0&&e.touches[0]){edMove(e.touches[0].clientX,e.touches[0].clientY);e.preventDefault();}},{passive:false});
+canvas.addEventListener('touchend',edUp);
+
+function openEditPanel(i){editI=i;editPanelOpen=true;const e=buildings[i].exp;
+  $ed('epOrg').value=e.organization||'';$ed('epTitle').value=e.title||'';$ed('epKind').value=e.kind||'work';
+  $ed('epStart').value=e.start||'';$ed('epEnd').value=e.end||'';$ed('epDesc').value=e.description||'';
+  $ed('epTags').value=(e.tags||[]).join(', ');$ed('epLink').value=e.link||'';$ed('editPanel').classList.add('open');}
+function closeEditPanel(){editPanelOpen=false;$ed('editPanel').classList.remove('open');}
+function saveEditPanel(){if(editI<0)return;const b=buildings[editI],e=b.exp;
+  e.organization=$ed('epOrg').value.trim();e.title=$ed('epTitle').value.trim();e.kind=$ed('epKind').value;
+  e.start=$ed('epStart').value.trim();e.end=$ed('epEnd').value.trim();e.description=$ed('epDesc').value.trim();
+  e.tags=$ed('epTags').value.split(',').map(t=>t.trim()).filter(Boolean);e.link=$ed('epLink').value.trim();
+  refreshBuilding(b,editI);rebuildAfterEdit();syncScene();closeEditPanel();}
+function deleteBuilding(){if(editI<0)return;if(!confirm('Eliminare questo edificio?'))return;buildings.splice(editI,1);editI=-1;closeEditPanel();rebuildAfterEdit();syncScene();}
+function addBuilding(){const e={kind:'work',organization:'Nuovo edificio',title:'',location:'',start:'',end:'',description:'',tags:[],link:''};
+  const b=makeBuilding(e,buildings.length,makeRng((seedBase^(buildings.length+7))>>>0));
+  b.x=Math.max(2,Math.min(MW-b.w-2,Math.floor((cam.x+CW/2)/TILE-b.w/2)));b.y=Math.max(3,Math.min(MH-b.h-3,Math.floor((cam.y+CH/2)/TILE-b.h/2)));
+  buildings.push(b);rebuildAfterEdit();syncScene();openEditPanel(buildings.length-1);}
+function flashBtn(el,txt){if(!el)return;const o=el.textContent;el.textContent=txt;setTimeout(()=>el.textContent=o,1400);}
+function saveWorld(){syncScene();try{localStorage.setItem('pw_scene',JSON.stringify(SCENE));}catch(e){}try{history.replaceState(null,'','#'+encodeShare(experiences,worldVariant,TILESET_BASE,SCENE));}catch(e){}flashBtn($ed('editSave'),'✓ Salvato');}
+function setEditUI(){const tb=$ed('editBar');if(tb)tb.style.display=editMode?'flex':'none';document.body.classList.toggle('editing',editMode);}
+function toggleEdit(){editMode=!editMode;if(editMode&&(!SCENE||!SCENE.items))syncScene();closeEditPanel();setEditUI();}
+$ed('editAdd')&&($ed('editAdd').onclick=addBuilding);
+$ed('editSave')&&($ed('editSave').onclick=saveWorld);
+$ed('editPlay')&&($ed('editPlay').onclick=()=>{editMode=false;closeEditPanel();setEditUI();});
+$ed('editToggle')&&($ed('editToggle').onclick=toggleEdit);
+$ed('epSave')&&($ed('epSave').onclick=saveEditPanel);
+$ed('epDelete')&&($ed('epDelete').onclick=deleteBuilding);
+$ed('epClose')&&($ed('epClose').onclick=closeEditPanel);
+
 // ═══ START ═══
 loadImages(()=>{
   document.getElementById('loading').style.display='none';
@@ -1073,6 +1208,8 @@ loadImages(()=>{
   const regenBtn=document.getElementById('regenBtn');
   if(regenBtn){ if(customMode) regenBtn.style.display='none'; else regenBtn.onclick=()=>{ buildWorld(worldVariant+1); persistVariant(); }; }
   buildWorld(initialVariant);   // costruisce edifici + mappa + sprite + giocatore + camera
+  if(customMode){const et=$ed('editToggle'); if(et)et.style.display='none';}
+  setEditUI();
   requestAnimationFrame(loop);
 });
 </script>
