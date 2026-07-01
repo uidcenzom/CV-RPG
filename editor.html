@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>Map Editor - Portfolio World</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;display:flex;height:100vh;overflow:hidden}
@@ -71,6 +72,8 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;display:flex
     <button id="btnRect" title="Rettangolo (R)">▭ Rect</button>
     <button id="btnFill" title="Riempi (G)">🪣 Fill</button>
     <button id="btnErase" title="Gomma (E)">✕ Gomma</button>
+    <button id="btnSpawn" title="Punto di partenza del giocatore">◎ Spawn</button>
+    <button id="btnPortal" title="Portale esperienza (in ordine)">⚑ Portale</button>
     <span style="color:#333">|</span>
     <label>Griglia:</label>
     <input type="number" id="gridW" value="48" min="8" max="200" title="Larghezza mappa">
@@ -114,6 +117,10 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;display:flex
     <button id="btnImport" class="secondary">Importa JSON</button>
     <button id="btnGenCode" class="secondary">Genera Codice Gioco</button>
     <button id="btnTestGame" style="background:#0f3460;color:#00D4FF;border:1px solid #00D4FF;margin-top:8px">▶ TESTA NEL GIOCO</button>
+    <button id="btnWorldLink" style="background:linear-gradient(90deg,#6d6bf6,#9b6bf6);color:#fff;border:none;margin-top:8px">🎮 GENERA LINK MONDO</button>
+    <div id="worldLinkBox" style="display:none;margin-top:6px">
+      <input id="worldLinkUrl" readonly style="width:100%;font-size:9px;padding:5px;background:#0a0f1e;color:#00D4FF;border:1px solid #0f3460;border-radius:3px">
+    </div>
     <input type="file" id="importFile" accept=".json" style="display:none">
   </div>
 </div>
@@ -161,6 +168,8 @@ let selection = null; // {sheetIdx, sx, sy, sw, sh} in source pixels
 let painting = false;
 let rectStart = null;
 let undoStack = [], redoStack = [];
+let spawn = null;      // {x,y} punto di partenza
+let portals = [];      // [{x,y}] portali esperienza, in ordine
 
 // Layers: each layer has { name, visible, data: 2D array of cells }
 // Each cell is null or { sheet: sheetIndex, sx, sy, sw, sh, collision: bool }
@@ -373,6 +382,23 @@ function drawMap() {
     }
   }
 
+  // Spawn + Portali (marker)
+  const s = TILE * zoom;
+  if (spawn) {
+    const px = spawn.x * s, py = spawn.y * s;
+    mapCtx.fillStyle = 'rgba(0,255,120,0.35)'; mapCtx.fillRect(px, py, s, s);
+    mapCtx.strokeStyle = '#00ff78'; mapCtx.lineWidth = 2; mapCtx.strokeRect(px + 1, py + 1, s - 2, s - 2);
+    mapCtx.fillStyle = '#00ff78'; mapCtx.font = 'bold ' + (s * 0.6) + 'px sans-serif';
+    mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle'; mapCtx.fillText('S', px + s / 2, py + s / 2);
+  }
+  portals.forEach((p, i) => {
+    const px = p.x * s, py = p.y * s;
+    mapCtx.fillStyle = 'rgba(120,110,255,0.4)'; mapCtx.fillRect(px, py, s, s);
+    mapCtx.strokeStyle = '#6d6bf6'; mapCtx.lineWidth = 2; mapCtx.strokeRect(px + 1, py + 1, s - 2, s - 2);
+    mapCtx.fillStyle = '#fff'; mapCtx.font = 'bold ' + (s * 0.55) + 'px sans-serif';
+    mapCtx.textAlign = 'center'; mapCtx.textBaseline = 'middle'; mapCtx.fillText(String(i + 1), px + s / 2, py + s / 2);
+  });
+
   // Rect tool preview
   if (tool === 'rect' && rectStart && painting) {
     mapCtx.strokeStyle = 'rgba(0,255,65,0.5)';
@@ -464,6 +490,12 @@ function fillRect(x1, y1, x2, y2) {
 mapCanvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   const { x, y } = getTileCoord(e);
+  if (tool === 'spawn') { spawn = { x, y }; drawMap(); updateStatus(x, y); return; }
+  if (tool === 'portal') {
+    const i = portals.findIndex(p => p.x === x && p.y === y);
+    if (i >= 0) portals.splice(i, 1); else portals.push({ x, y });
+    drawMap(); updateStatus(x, y); return;
+  }
   painting = true;
   saveUndo();
   if (tool === 'pen' || tool === 'erase') {
@@ -524,6 +556,8 @@ document.getElementById('btnPen').onclick = () => setTool('pen');
 document.getElementById('btnRect').onclick = () => setTool('rect');
 document.getElementById('btnFill').onclick = () => setTool('fill');
 document.getElementById('btnErase').onclick = () => setTool('erase');
+document.getElementById('btnSpawn').onclick = () => setTool('spawn');
+document.getElementById('btnPortal').onclick = () => setTool('portal');
 
 function setTool(t) {
   tool = t;
@@ -631,6 +665,41 @@ function exportLayerData(layer) {
   }
   return tiles;
 }
+
+// ── Genera un LINK al mondo esplorabile (mappa + spawn + portali nel link, con i dati CV) ──
+document.getElementById('btnWorldLink').onclick = () => {
+  const layersC = layers.filter(l => l.visible !== false).map(l => {
+    const t = [];
+    for (let y = 0; y < mapH; y++) for (let x = 0; x < mapW; x++) {
+      const c = l.data[y][x];
+      if (c) t.push([x, y, c.sheet, c.sx, c.sy, c.sw, c.sh, c.collision ? 1 : 0]);
+    }
+    return t;
+  });
+  const map = { w: mapW, h: mapH, sheets: SHEETS.map(s => s.path.replace(/^tiles\//, '')), layers: layersC };
+  if (spawn) map.spawn = [spawn.x, spawn.y];
+  if (portals.length) map.portals = portals.map(p => [p.x, p.y]);
+  // esperienze + variante + tileset dal builder (localStorage)
+  let e = [], v = 0, tset = '';
+  try {
+    const r = localStorage.getItem('pw_experiences'); if (r) e = JSON.parse(r);
+    v = parseInt(localStorage.getItem('pw_variant') || '0', 10) || 0;
+    tset = localStorage.getItem('pw_tileset') || '';
+  } catch (err) {}
+  const payload = { e, v, m: map }; if (tset) payload.t = tset;
+  const json = JSON.stringify(payload);
+  const hash = window.LZString
+    ? 'lz=' + LZString.compressToEncodedURIComponent(json)
+    : 'p=' + btoa(unescape(encodeURIComponent(json))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const url = new URL('portfolio-map.html', location.href); url.hash = hash;
+  const box = document.getElementById('worldLinkBox'), inp = document.getElementById('worldLinkUrl');
+  inp.value = url.href; box.style.display = 'block'; inp.select();
+  try { if (navigator.clipboard) navigator.clipboard.writeText(url.href); } catch (err) {}
+  const kb = Math.round(url.href.length / 1024);
+  document.getElementById('statusBar').textContent =
+    `Link mondo generato (${kb} KB, ${portals.length} portali, ${e.length} esperienze) — copiato negli appunti`;
+  window.open(url.href, '_blank');
+};
 
 document.getElementById('btnImport').onclick = () => document.getElementById('importFile').click();
 document.getElementById('importFile').onchange = e => {

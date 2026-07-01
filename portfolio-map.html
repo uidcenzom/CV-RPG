@@ -106,7 +106,7 @@ let MW=48,MH=30; // ridimensionati dinamicamente da layoutBuildings()
 // ═══ TILESET CONFIGURABILE (pacchetti / URL / reskin per chi forka) ═══
 // Un tileset è una CARTELLA (locale o URL) con la STESSA struttura di 'tiles/'.
 // Priorità della base: link condiviso (#t) > localStorage > window.PW_TILESET (config.js) > 'tiles/'.
-const SHARED=(function(){const p=decodeSharedHash();if(!p)return null;return Array.isArray(p)?{e:p,v:0,t:''}:{e:p.e,v:+p.v||0,t:p.t||''};})();
+const SHARED=(function(){const p=decodeSharedHash();if(!p)return null;return Array.isArray(p)?{e:p,v:0,t:'',m:null}:{e:p.e,v:+p.v||0,t:p.t||'',m:p.m||null};})();
 function resolveTileset(){
   let base=(SHARED&&SHARED.t)||'';
   if(!base){try{base=localStorage.getItem('pw_tileset')||'';}catch(e){}}
@@ -115,6 +115,15 @@ function resolveTileset(){
   return /\/$/.test(base)?base:base+'/';
 }
 const TILESET_BASE=resolveTileset();
+
+// ═══ MAPPA CUSTOM (dall'editor): nel link (#m) o in localStorage 'pw_map' ═══
+// Formato: {w,h, sheets:[relPath], layers:[[[x,y,s,sx,sy,sw,sh,c],...]], spawn:[x,y], portals:[[x,y],...]}
+const CUSTOM=(function(){
+  if(SHARED&&SHARED.m)return SHARED.m;
+  try{const r=localStorage.getItem('pw_map'); if(r){const j=JSON.parse(r); if(j&&j.layers&&j.w)return j;}}catch(e){}
+  return null;
+})();
+const customMode=!!CUSTOM;
 
 // ═══ IMAGE LOADING ═══
 const IMG={};
@@ -137,8 +146,10 @@ const paths={
   idleU:B+'Entities/Characters/Body_A/Animations/Idle_Base/Idle_Up-Sheet.png',
 };
 function loadImages(cb){
-  let n=0;const tot=Object.keys(paths).length;
-  for(const[k,p]of Object.entries(paths)){
+  const entries=Object.entries(paths);
+  if(customMode&&Array.isArray(CUSTOM.sheets)) CUSTOM.sheets.forEach((p,i)=>entries.push(['cs'+i, TILESET_BASE+p]));
+  let n=0;const tot=entries.length;
+  for(const[k,p]of entries){
     const img=new Image();
     img.onload=img.onerror=()=>{n++;if(n===tot)cb();};
     img.src=p;IMG[k]=img;
@@ -265,8 +276,38 @@ function persistVariant(){
   try{localStorage.setItem('pw_variant',String(worldVariant));}catch(e){}
   if(isShared){ try{history.replaceState(null,'','#'+encodeShare(experiences,worldVariant,TILESET_BASE));}catch(e){} }
 }
+// Griglia di collisione per la mappa custom
+let customSolid=null;
+function buildCustomWorld(){
+  MW=CUSTOM.w; MH=CUSTOM.h;
+  customSolid=Array.from({length:MH},()=>Array(MW).fill(false));
+  (CUSTOM.layers||[]).forEach(layer=>layer.forEach(c=>{
+    if(c[7]){ const x=c[0],y=c[1],tw=Math.max(1,Math.round(c[5]/16)),th=Math.max(1,Math.round(c[6]/16));
+      for(let dy=0;dy<th;dy++)for(let dx=0;dx<tw;dx++){const yy=y+dy,xx=x+dx; if(yy>=0&&yy<MH&&xx>=0&&xx<MW)customSolid[yy][xx]=true;} }
+  }));
+  // Portali → esperienze (in ordine). Ogni portale è un edificio "1x1" interagibile.
+  const ports=CUSTOM.portals||[];
+  buildings=ports.slice(0,experiences.length).map((p,i)=>{
+    const e=experiences[i], st=kindStyle(e.kind), nm=String(e.organization||'').toUpperCase();
+    return { name: nm.length>20?nm.slice(0,19)+'…':nm, kind:e.kind, x:p[0], y:p[1], w:1, h:1, doorX:p[0], doorY:p[1],
+      color:st.color, colorDim:st.colorDim, colorRgb:st.colorRgb,
+      projects:[{num:String(i+1).padStart(3,'0'),type:st.label,name:String(e.title||e.organization||''),desc:buildDesc(e),tags:Array.isArray(e.tags)?e.tags:[],link:e.link||''}] };
+  });
+  const sp=(CUSTOM.spawn&&CUSTOM.spawn.length===2)?CUSTOM.spawn:[Math.floor(MW/2),Math.floor(MH/2)];
+  player.x=(sp[0]+0.5)*TILE; player.y=(sp[1]+0.5)*TILE; player.dir=2; player.moving=false;
+  particles.length=0; hintBldg=-1; if(modalOpen)closeModal();
+  cam.x=Math.max(0,Math.min(MW*TILE-CW,player.x-CW/2));
+  cam.y=Math.max(0,Math.min(MH*TILE-CH,player.y-CH/2));
+}
+function nearPortal(){
+  const px=player.x/TILE, py=player.y/TILE;
+  for(let i=0;i<buildings.length;i++){const b=buildings[i]; if(Math.abs(px-(b.x+0.5))<1.7 && Math.abs(py-(b.y+0.5))<1.7)return i;}
+  return -1;
+}
+
 // (Ri)costruisce l'intero mondo per una data variante (deterministico)
 function buildWorld(v){
+  if(customMode){ buildCustomWorld(); return; }
   worldVariant=((Math.round(v)%1000)+1000)%1000;
   const rng=makeRng((seedBase ^ Math.imul(worldVariant+1,2654435761))>>>0);
   layoutName=rng.pick(LAYOUTS);
@@ -599,6 +640,7 @@ let ffSpawn=0,rpSpawn=0,lfSpawn=0,skSpawn=0,waterPosCache=null;
 const treePosCache=[];
 
 function spawnParticles(dt,t){
+  if(customMode)return; // niente particelle procedurali sulle mappe custom
   if(!treePosCache.length){
     for(let ty=0;ty<MH;ty++)for(let tx=0;tx<MW;tx++)
       if(MAP[ty][tx]===T.TR&&ty>2&&ty<MH-2)treePosCache.push({x:tx*TILE+16,y:ty*TILE+16});
@@ -697,7 +739,10 @@ window.addEventListener('keyup',e=>{keys[e.key]=false;});
 
 // ═══ COLLISION ═══
 function getTile(tx,ty){const x=Math.floor(tx),y=Math.floor(ty);if(x<0||x>=MW||y<0||y>=MH)return T.TR;return MAP[y][x];}
-function solid(x,y){return SOLID.has(getTile(x/TILE,y/TILE));}
+function solid(x,y){
+  if(customMode){const tx=Math.floor(x/TILE),ty=Math.floor(y/TILE); if(tx<0||ty<0||tx>=MW||ty>=MH)return true; return customSolid[ty][tx];}
+  return SOLID.has(getTile(x/TILE,y/TILE));
+}
 function canMove(nx,ny){const m=7;return !solid(nx-m,ny-m)&&!solid(nx+m,ny-m)&&!solid(nx-m,ny+m+4)&&!solid(nx+m,ny+m+4);}
 function nearDoorInfo(){
   const tx=Math.floor(player.x/TILE),ty=Math.floor(player.y/TILE);
@@ -784,7 +829,7 @@ function update(dt){
   player.y=Math.max(TILE*2+8,Math.min(MH*TILE-TILE*2-8,player.y));
   if(player.moving){player.ft+=dt;if(player.ft>.1){player.frame=(player.frame+1)%6;player.ft=0;}player.iFt=0;player.iFrame=0;}
   else{player.frame=0;player.ft=0;player.iFt+=dt;if(player.iFt>.25){player.iFrame=(player.iFrame+1)%4;player.iFt=0;}}
-  hintBldg=nearDoorInfo();
+  hintBldg=customMode?nearPortal():nearDoorInfo();
   if(btnEnterEl) btnEnterEl.classList.toggle('dim',hintBldg<0);
   if(justP.e||justP.E||justP[' ']){if(hintBldg>=0)openModal(hintBldg);}
   Object.keys(justP).forEach(k=>delete justP[k]);
@@ -797,8 +842,73 @@ function update(dt){
 }
 
 // ═══ RENDER ═══
+// ═══ RENDER MAPPA CUSTOM (dall'editor) ═══
+function drawPortal(b,cx,cy){
+  const px=(b.x+.5)*TILE-cx, py=(b.y+1)*TILE-cy, pulse=.7+.3*Math.sin(time*3+b.x);
+  ctx.save();
+  ctx.globalAlpha=.45*pulse; ctx.fillStyle=b.color;
+  ctx.beginPath();ctx.ellipse(px,py-2,15,7,0,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;
+  ctx.fillStyle=b.colorDim; ctx.fillRect(px-4,py-30,8,30);
+  ctx.shadowColor=b.color;ctx.shadowBlur=14*pulse;ctx.fillStyle=b.color;
+  ctx.beginPath();ctx.arc(px,py-34,8,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+  // targhetta nome
+  const nm=b.name||''; if(!nm)return;
+  const rc=b.colorRgb.split(',').map(Number), light=rc.map(v=>Math.round(v+(255-v)*.4)).join(',');
+  ctx.save();ctx.font='9px "Nunito", sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  const tw=ctx.measureText(nm).width, pw=tw+14, ph=18, ly=py-52;
+  ctx.fillStyle='rgba(3,7,12,.82)';ctx.fillRect(px-pw/2,ly-ph/2,pw,ph);
+  ctx.strokeStyle=`rgba(${b.colorRgb},.7)`;ctx.lineWidth=1.5;ctx.strokeRect(px-pw/2,ly-ph/2,pw,ph);
+  ctx.lineWidth=3;ctx.strokeStyle='rgba(0,0,0,.9)';ctx.strokeText(nm,px,ly);
+  ctx.fillStyle=`rgb(${light})`;ctx.fillText(nm,px,ly);
+  ctx.restore();
+}
+function renderCustom(cx,cy){
+  ctx.fillStyle=CUSTOM.bg||'#3a6830';ctx.fillRect(0,0,CW,CH);
+  for(const layer of CUSTOM.layers){
+    for(const c of layer){
+      const img=IMG['cs'+c[2]]; if(!img||!img.naturalWidth)continue;
+      const dw=Math.round(c[5]/16*TILE), dh=Math.round(c[6]/16*TILE);
+      const dx=c[0]*TILE-cx, dy=c[1]*TILE-cy;
+      if(dx>CW||dy>CH||dx+dw<0||dy+dh<0)continue;
+      ctx.drawImage(img,c[3],c[4],c[5],c[6],dx,dy,dw,dh);
+    }
+  }
+  const ppx=Math.round(player.x-cx),ppy=Math.round(player.y-cy);
+  const objs=buildings.map((b,i)=>({t:'p',i,sortY:(b.y+1)*TILE}));
+  objs.push({t:'me',sortY:player.y+4});
+  objs.sort((a,b)=>a.sortY-b.sortY);
+  for(const o of objs){
+    if(o.t==='p') drawPortal(buildings[o.i],cx,cy);
+    else{
+      ctx.save();ctx.globalAlpha=.2;ctx.fillStyle='#000';ctx.beginPath();ctx.ellipse(ppx,ppy+4,12,5,0,0,Math.PI*2);ctx.fill();ctx.restore();
+      ctx.save();ctx.translate(ppx,ppy);drawChar(player.dir,player.moving?player.frame:player.iFrame,player.moving);ctx.restore();
+    }
+  }
+  if(hintBldg>=0&&!modalOpen){const b=buildings[hintBldg];
+    ctx.save();ctx.shadowColor=b.color;ctx.shadowBlur=10;
+    ctx.fillStyle='rgba(0,5,1,.88)';ctx.fillRect(ppx-58,ppy-46,116,22);
+    ctx.strokeStyle=b.color;ctx.lineWidth=1;ctx.strokeRect(ppx-58,ppy-46,116,22);
+    ctx.fillStyle=b.color;ctx.font='5px "Press Start 2P"';ctx.textAlign='center';
+    ctx.fillText(`[E] ${b.name||'ENTRA'}`,ppx,ppy-31);ctx.restore();}
+  // minimappa semplice
+  const mw=88,mh=Math.round(88*MH/MW),mx=CW-mw-10,my=10,sx=mw/MW,sy=mh/MW*(MW/MW);
+  ctx.save();ctx.globalAlpha=.85;ctx.fillStyle='#0a1a14';ctx.fillRect(mx-1,my-1,mw+2,mh+2);
+  ctx.strokeStyle='rgba(109,107,246,.6)';ctx.lineWidth=1;ctx.strokeRect(mx-1,my-1,mw+2,mh+2);
+  const syv=mh/MH;
+  ctx.fillStyle='rgba(120,130,160,.5)';
+  for(let ty=0;ty<MH;ty++)for(let tx=0;tx<MW;tx++)if(customSolid[ty][tx])ctx.fillRect(mx+tx*sx,my+ty*syv,Math.ceil(sx),Math.ceil(syv));
+  buildings.forEach(b=>{ctx.fillStyle=b.color;ctx.fillRect(mx+b.x*sx-1,my+b.y*syv-1,3,3);});
+  ctx.fillStyle='#fff';ctx.fillRect(mx+(player.x/TILE)*sx-1.5,my+(player.y/TILE)*syv-1.5,3,3);
+  ctx.restore();
+  const vg=ctx.createRadialGradient(CW/2,CH/2,CH*.4,CW/2,CH/2,CH*1.1);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,8,.28)');
+  ctx.fillStyle=vg;ctx.fillRect(0,0,CW,CH);
+}
+
 function render(){
   const cx=Math.round(cam.x+shake.x),cy=Math.round(cam.y+shake.y);
+  if(customMode){renderCustom(cx,cy);return;}
   ctx.fillStyle=(theme&&theme.edge)||'#3a6830';ctx.fillRect(0,0,CW,CH);
   const sx=Math.max(0,Math.floor(cx/TILE)),ex=Math.min(MW-1,Math.ceil((cx+CW)/TILE));
   const sy=Math.max(0,Math.floor(cy/TILE)),ey=Math.min(MH-1,Math.ceil((cy+CH)/TILE));
@@ -960,7 +1070,7 @@ loadImages(()=>{
   document.getElementById('loading').style.display='none';
   buildFloorCache();
   const regenBtn=document.getElementById('regenBtn');
-  if(regenBtn) regenBtn.onclick=()=>{ buildWorld(worldVariant+1); persistVariant(); };
+  if(regenBtn){ if(customMode) regenBtn.style.display='none'; else regenBtn.onclick=()=>{ buildWorld(worldVariant+1); persistVariant(); }; }
   buildWorld(initialVariant);   // costruisce edifici + mappa + sprite + giocatore + camera
   requestAnimationFrame(loop);
 });
