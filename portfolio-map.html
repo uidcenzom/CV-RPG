@@ -429,7 +429,7 @@ function makeMap(theme,decorSalt){
     s(b.doorY,dc,T.DR);s(b.doorY,dc+1,T.DR);
     b.signX=dc;b.signY=b.y+b.h+1;
     s(b.signY,b.signX,T.SG);
-    for(let y=b.y-1;y<=b.y+b.h+2;y++)for(let x=b.x-1;x<=b.x+b.w;x++)reserve(y,x);
+    for(let y=b.y-4;y<=b.y+b.h+2;y++)for(let x=b.x-1;x<=b.x+b.w;x++)reserve(y,x);  // include la zona del tetto (niente alberi/rocce tagliati)
   });
 
   // Strade: viale orizzontale sotto ogni fila + connettore da ogni porta + spina sinistra
@@ -496,43 +496,28 @@ function prerenderBuildings(){
 
     const stX=b.wallStyle*96; // style X offset in Walls.png
 
-    // ── Dark interior behind windows/door ──
-    cx.fillStyle='#0a0808';
-    cx.fillRect(ovX,roofH,bw,bh);
-
-    // ── Walls: tile from Walls.png (16px source → 32px game tile) ──
+    // ── Muri PIENI: campiona lo strip di muro solido (niente centro trasparente) ──
     for(let row=0;row<b.h;row++){
       for(let col=0;col<b.w;col++){
-        // Source Y: top=16, body=32 or 48, bottom=128
-        let sy;
-        if(row===0) sy=16;
-        else if(row>=b.h-1) sy=128;
-        else sy=32+((row%2)*16);
-
-        // Source X: col0=left edge, col(w-1)=right edge, center cycles cols 1-4
-        let sx;
-        if(col===0) sx=stX;
-        else if(col===b.w-1) sx=stX+80;
-        else sx=stX+16+(((col-1)%4)*16);
-
-        cx.drawImage(IMG.bwalls,sx,sy,16,16,
-          ovX+col*TILE, roofH+row*TILE, TILE,TILE);
+        const sx=stX+16+(((col+row)%3)*16), sy=208; // striscia di muro pieno
+        cx.drawImage(IMG.bwalls,sx,sy,16,16, ovX+col*TILE, roofH+row*TILE, TILE,TILE);
       }
     }
 
-    // ── Windows from Props.png (Window2: 134,27,20,37) ──
+    // ── Finestre (finestra blu di Props: 48,64,32,36), griglia regolare, dentro il tile ──
     const dc=Math.floor(b.w/2);
-    for(let row=1;row<=b.h-3;row+=2){
-      for(let col=2;col<b.w-2;col+=3){
-        // Skip door area
-        if(row>=b.h-3 && Math.abs(col-dc)<2) continue;
-        cx.drawImage(IMG.bprops,134,27,20,37,
-          ovX+col*TILE+2, roofH+row*TILE+2, TILE-4,TILE*1.4);
+    const winW=Math.round(TILE*0.62), winH=Math.round(TILE*0.72);
+    for(let row=1; row<b.h-1; row+=2){
+      for(let col=1; col<b.w-1; col+=2){
+        if(row>=b.h-2 && Math.abs(col-dc)<=1) continue; // evita l'area della porta
+        cx.drawImage(IMG.bprops,48,64,32,36,
+          ovX+col*TILE+(TILE-winW)/2, roofH+row*TILE+(TILE-winH)/2, winW,winH);
       }
     }
 
-    // ── Door from Props.png (Door2: 32,20,32,44) ──
+    // ── Porta (Door2: 32,20,32,44) ──
     const doorW=TILE*2, doorH=TILE*2.5;
+    cx.fillStyle='#0a0808'; cx.fillRect(ovX+dc*TILE+4, roofH+bh-doorH*0.7, doorW-8, doorH*0.7); // vano scuro
     cx.drawImage(IMG.bprops,32,20,32,44,
       ovX+dc*TILE, roofH+bh-doorH, doorW,doorH);
 

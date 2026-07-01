@@ -484,7 +484,9 @@ function placeTile(x, y) {
   const layer = layers[activeLayerIdx];
   if (!layer) return;
   if (tool === 'erase') {
-    if (y < mapH && x < mapW) layer.data[y][x] = null;
+    if (y < mapH && x < mapW) layer.data[y][x] = null;   // cancella il tile del layer attivo
+    const pi = mapProps.findIndex(p => p.x === x && p.y === y); // ...e anche alberi/rocce generati o aggiunti
+    if (pi >= 0) mapProps.splice(pi, 1);
     return;
   }
   if (!selection) return;
