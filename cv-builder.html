@@ -129,6 +129,11 @@ details summary{cursor:pointer;color:var(--p1);font-size:14px;font-weight:800;ma
       <button class="btn sm" id="loadDemo">↺ Carica dati demo</button>
       <a class="btn sm" href="portfolio-map.html" style="text-decoration:none">→ Apri mappa attuale</a>
     </div>
+    <details style="margin-top:16px">
+      <summary>🎨 Aspetto / Tileset personalizzato</summary>
+      <p class="muted" style="margin:10px 0">Di default usi la grafica inclusa. Per usare un <b>tuo</b> pacchetto grafico, incolla l'URL della cartella tileset — deve avere la <b>stessa struttura</b> di <code>tiles/</code> (stesse sottocartelle e nomi file). Verrà incluso nel link condiviso.</p>
+      <input id="tilesetUrl" placeholder="https://tuo-utente.github.io/miei-tiles/  (opzionale)" style="width:100%;background:var(--soft);border:1.5px solid var(--line);border-radius:10px;padding:11px 12px;font-family:inherit;font-size:13px">
+    </details>
   </div>
 </div>
 
@@ -517,8 +522,9 @@ $('#generate').onclick=()=>{
 // ═══════════ LINK CONDIVISIBILE (dati compressi dentro l'URL) ═══════════
 function b64urlEncode(s){return btoa(unescape(encodeURIComponent(s))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
 function encodeData(data){
-  let v=0; try{v=parseInt(localStorage.getItem('pw_variant')||'0',10)||0;}catch(e){}
-  const json=JSON.stringify({e:data,v});   // include la variante del mondo scelta
+  let v=0,t=''; try{v=parseInt(localStorage.getItem('pw_variant')||'0',10)||0; t=localStorage.getItem('pw_tileset')||'';}catch(e){}
+  const o={e:data,v}; if(t)o.t=t;             // include variante del mondo e tileset scelto
+  const json=JSON.stringify(o);
   if(window.LZString) return 'lz='+LZString.compressToEncodedURIComponent(json); // link corto
   return 'p='+b64urlEncode(json);                                               // fallback offline
 }
@@ -545,6 +551,12 @@ $('#exportJson').onclick=()=>{
   const blob=new Blob([JSON.stringify(collect(),null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='portfolio-experiences.json';a.click();
 };
+// Tileset personalizzato (URL cartella): salvato in localStorage e incluso nel link
+const tilesetInput=$('#tilesetUrl');
+if(tilesetInput){
+  try{ tilesetInput.value=localStorage.getItem('pw_tileset')||''; }catch(e){}
+  tilesetInput.oninput=()=>{ const v=tilesetInput.value.trim(); try{ if(v)localStorage.setItem('pw_tileset',v); else localStorage.removeItem('pw_tileset'); }catch(e){} };
+}
 
 // Dati demo / stato iniziale
 const DEMO=[
