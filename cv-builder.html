@@ -114,6 +114,7 @@ details summary{cursor:pointer;color:var(--p1);font-size:14px;font-weight:800;ma
   <div class="step">
     <h2><span class="n">3</span> Genera il mondo</h2>
     <button class="btn big" id="generate">🎮 Genera e vai alla mappa</button>
+    <button class="btn big" id="editMap" style="margin-top:8px;color:#9333ea;border:2px solid #9333ea;background:#fff;box-shadow:none">🛠️ Modifica la mappa (aggiungi alberi, sposta…)</button>
     <button class="btn big share" id="shareLink">🔗 Crea link condivisibile</button>
     <div id="shareBox" class="sharebox" style="display:none">
       <div class="muted" style="margin-bottom:10px">Chiunque apra questo link vedrà il <b>tuo</b> mondo (i dati viaggiano dentro il link, niente server):</div>
@@ -128,7 +129,6 @@ details summary{cursor:pointer;color:var(--p1);font-size:14px;font-weight:800;ma
       <button class="btn sm" id="exportJson">⤓ Esporta JSON</button>
       <button class="btn sm" id="loadDemo">↺ Carica dati demo</button>
       <a class="btn sm" href="portfolio-map.html" style="text-decoration:none">→ Apri mappa</a>
-      <a class="btn sm" href="editor.html" style="text-decoration:none">🛠️ Crea mappa</a>
     </div>
     <details style="margin-top:16px">
       <summary>🎨 Aspetto / Tileset personalizzato</summary>
@@ -518,6 +518,13 @@ $('#generate').onclick=()=>{
   if(!data.length){setStatus('✕ Aggiungi almeno una voce con un ente o un titolo.');return;}
   localStorage.setItem('pw_experiences',JSON.stringify(data));
   location.href='portfolio-map.html';
+};
+// Modifica mappa: salva il CV e apre l'editor con la mappa ATTUALE (via il viewer)
+$('#editMap').onclick=()=>{
+  const data=collect();
+  if(!data.length){setStatus('✕ Aggiungi almeno una voce prima di modificare la mappa.');return;}
+  localStorage.setItem('pw_experiences',JSON.stringify(data));
+  location.href='portfolio-map.html?toeditor=1';
 };
 
 // ═══════════ LINK CONDIVISIBILE (dati compressi dentro l'URL) ═══════════

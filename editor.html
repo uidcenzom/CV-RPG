@@ -182,6 +182,7 @@ let rectStart = null;
 let undoStack = [], redoStack = [];
 let spawn = null;      // {x,y} punto di partenza
 let portals = [];      // [{x,y}] portali esperienza, in ordine
+let cvBuildings = [];  // [{e,x,y,w,h,kind}] edifici dal CV (mappa attuale)
 
 // Layers: each layer has { name, visible, data: 2D array of cells }
 // Each cell is null or { sheet: sheetIndex, sx, sy, sw, sh, collision: bool }
@@ -344,7 +345,7 @@ function drawMap() {
   mapCtx.imageSmoothingEnabled = false;
   const pxW = mapW * TILE * zoom, pxH = mapH * TILE * zoom;
   // Background
-  mapCtx.fillStyle = '#1a3010';
+  mapCtx.fillStyle = '#3a6830';
   mapCtx.fillRect(0, 0, pxW, pxH);
 
   // Draw layers bottom to top
@@ -394,8 +395,19 @@ function drawMap() {
     }
   }
 
-  // Spawn + Portali (marker)
+  // Edifici del CV (rettangoli etichettati)
   const s = TILE * zoom;
+  const KC = { education: '#00D4FF', work: '#00FF41', project: '#FF41E0' };
+  cvBuildings.forEach(b => {
+    const px = b.x * s, py = b.y * s, bw = b.w * s, bh = b.h * s, col = KC[b.kind] || '#00FF41';
+    mapCtx.fillStyle = col + '22'; mapCtx.fillRect(px, py, bw, bh);
+    mapCtx.strokeStyle = col; mapCtx.lineWidth = 2; mapCtx.strokeRect(px + 1, py + 1, bw - 2, bh - 2);
+    mapCtx.fillStyle = col; mapCtx.font = 'bold ' + Math.round(s * 0.75) + 'px sans-serif';
+    mapCtx.textAlign = 'left'; mapCtx.textBaseline = 'top';
+    mapCtx.fillText('🏠 ' + (((b.e && b.e.organization) || 'Edificio').slice(0, 18)), px + 4, py + 4);
+  });
+
+  // Spawn + Portali (marker)
   if (spawn) {
     const px = spawn.x * s, py = spawn.y * s;
     mapCtx.fillStyle = 'rgba(0,255,120,0.35)'; mapCtx.fillRect(px, py, s, s);
@@ -691,6 +703,7 @@ document.getElementById('btnWorldLink').onclick = () => {
   const map = { w: mapW, h: mapH, sheets: SHEETS.map(s => s.path.replace(/^tiles\//, '')), layers: layersC };
   if (spawn) map.spawn = [spawn.x, spawn.y];
   if (portals.length) map.portals = portals.map(p => [p.x, p.y]);
+  if (cvBuildings.length) map.buildings = cvBuildings.map(b => ({ e: b.e, x: b.x, y: b.y, w: b.w, h: b.h }));
   // esperienze + variante + tileset dal builder (localStorage)
   let e = [], v = 0, tset = '';
   try {
@@ -987,9 +1000,35 @@ window.addEventListener('keydown', e => {
   if (e.key === '-') document.getElementById('zoomOut').click();
 });
 
+// ── Carica la mappa attuale generata dal CV (passata dal viewer) ──
+function loadEditorMap() {
+  let raw; try { raw = localStorage.getItem('pw_editor_map'); } catch (e) {}
+  if (!raw) return;
+  let d; try { d = JSON.parse(raw); } catch (e) { return; }
+  mapW = d.mapW || mapW; mapH = d.mapH || mapH;
+  document.getElementById('gridW').value = mapW;
+  document.getElementById('gridH').value = mapH;
+  if (Array.isArray(d.layers) && d.layers.length) {
+    layers = d.layers.map(l => {
+      const layer = makeLayer(l.name || 'Layer');
+      (l.tiles || []).forEach(t => {
+        if (Array.isArray(t)) { const [x, y, s, sx, sy, sw, sh, c] = t;
+          if (layer.data[y] && x >= 0 && x < mapW) layer.data[y][x] = { sheet: s, sx, sy, sw, sh, collision: !!c }; }
+      });
+      return layer;
+    });
+  }
+  cvBuildings = (d.buildings || []).map(b => ({ e: b.e, x: b.x, y: b.y, w: b.w || 9, h: b.h || 6, kind: b.kind || (b.e && b.e.kind) || 'work' }));
+  if (d.spawn && d.spawn.length === 2) spawn = { x: d.spawn[0], y: d.spawn[1] };
+  activeLayerIdx = 0;
+  document.getElementById('statusBar').textContent =
+    `Mappa attuale caricata: ${cvBuildings.length} edifici. Dipingi altri tile (es. alberi) e "🎮 Genera link mondo".`;
+}
+
 // ══ INIT ══
 loadSheets(() => {
   initPalette();
+  loadEditorMap();
   resizeMapCanvas();
   renderLayers();
   drawMap();
