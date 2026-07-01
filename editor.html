@@ -72,6 +72,9 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;display:flex
     <button id="btnRect" title="Rettangolo (R)">▭ Rect</button>
     <button id="btnFill" title="Riempi (G)">🪣 Fill</button>
     <button id="btnErase" title="Gomma (E)">✕ Gomma</button>
+    <button id="btnMove" title="Sposta un edificio (trascina)">✋ Sposta edif.</button>
+    <button id="btnTree" title="Aggiungi/togli alberi">🌳 Albero</button>
+    <button id="btnRock" title="Aggiungi/togli rocce">🪨 Roccia</button>
     <button id="btnSpawn" title="Punto di partenza del giocatore">◎ Spawn</button>
     <button id="btnPortal" title="Portale esperienza (in ordine)">⚑ Portale</button>
     <span style="color:#333">|</span>
@@ -120,15 +123,15 @@ body{background:#1a1a2e;color:#eee;font-family:system-ui,sans-serif;display:flex
     </div>
     <div style="font-size:10px;color:#8aa;line-height:1.7;margin-bottom:10px;padding:9px;background:#0a0f1e;border:1px solid #0f3460;border-radius:4px">
       <b style="color:#00D4FF">Come si usa</b><br>
-      1. Scegli un tile dalla palette →<br>
-      2. Dipingi la mappa (🖌 Penna)<br>
-      3. Metti <b>◎ Spawn</b> e <b>⚑ Portali</b><br>
-      4. <b style="color:#9b6bf6">🎮 Genera link mondo</b>
+      La mappa del tuo CV è già caricata.<br>
+      🌳 <b>Albero</b> / 🪨 <b>Roccia</b> per decorare<br>
+      ✋ <b>Sposta edif.</b> per spostarli<br>
+      🖌 <b>Penna</b> per altri tile dalla palette<br>
+      <b style="color:#9b6bf6">🎮 Genera link mondo</b>
     </div>
     <button id="btnExport">ESPORTA JSON</button>
     <button id="btnImport" class="secondary">Importa JSON</button>
     <button id="btnGenCode" class="secondary">Genera Codice Gioco</button>
-    <button id="btnTestGame" style="background:#0f3460;color:#00D4FF;border:1px solid #00D4FF;margin-top:8px">▶ TESTA NEL GIOCO</button>
     <button id="btnWorldLink" style="background:linear-gradient(90deg,#6d6bf6,#9b6bf6);color:#fff;border:none;margin-top:8px">🎮 GENERA LINK MONDO</button>
     <div id="worldLinkBox" style="display:none;margin-top:6px">
       <input id="worldLinkUrl" readonly style="width:100%;font-size:9px;padding:5px;background:#0a0f1e;color:#00D4FF;border:1px solid #0f3460;border-radius:3px">
@@ -183,6 +186,8 @@ let undoStack = [], redoStack = [];
 let spawn = null;      // {x,y} punto di partenza
 let portals = [];      // [{x,y}] portali esperienza, in ordine
 let cvBuildings = [];  // [{e,x,y,w,h,kind}] edifici dal CV (mappa attuale)
+let mapProps = [];     // [{x,y,type}] alberi(0)/rocce(1)/cespugli(2)
+let bDragI = -1, bDragOX = 0, bDragOY = 0;  // trascinamento edificio
 
 // Layers: each layer has { name, visible, data: 2D array of cells }
 // Each cell is null or { sheet: sheetIndex, sx, sy, sw, sh, collision: bool }
@@ -395,6 +400,9 @@ function drawMap() {
     }
   }
 
+  // Alberi / rocce / cespugli (ancorati alla base, come nel gioco)
+  drawProps();
+
   // Edifici del CV (rettangoli etichettati)
   const s = TILE * zoom;
   const KC = { education: '#00D4FF', work: '#00FF41', project: '#FF41E0' };
@@ -433,6 +441,26 @@ function drawMap() {
     mapCtx.strokeRect(x1 * TILE * zoom, y1 * TILE * zoom,
       (x2 - x1 + 1) * TILE * zoom, (y2 - y1 + 1) * TILE * zoom);
     mapCtx.setLineDash([]);
+  }
+}
+
+// Disegna alberi/rocce/cespugli con lo stesso ancoraggio del gioco (base sul tile)
+function drawProps() {
+  const s = TILE * zoom;
+  const sorted = [...mapProps].sort((a, b) => a.y - b.y);
+  for (const p of sorted) {
+    if (p.type === 0) {
+      const img = sheetImages[11]; if (!img || !img.naturalWidth) continue;
+      const v = (((p.x * 7 + p.y * 13) % 4) + 4) % 4, sx = (v % 2) * 52, sy = v < 2 ? 0 : 96;
+      const dw = 2.275 * s, dh = 4.19 * s;
+      mapCtx.drawImage(img, sx, sy, 52, 96, (p.x + 0.5) * s - dw / 2, (p.y + 1) * s - dh, dw, dh);
+    } else if (p.type === 1) {
+      const img = sheetImages[10]; if (!img || !img.naturalWidth) continue;
+      mapCtx.drawImage(img, 48, 16, 32, 32, p.x * s, p.y * s - 0.25 * s, s, 1.25 * s);
+    } else {
+      const img = sheetImages[9]; if (!img || !img.naturalWidth) continue;
+      mapCtx.drawImage(img, 3, 64, 42, 36, p.x * s - 0.15 * s, p.y * s - 0.1 * s, 1.3 * s, 1.05 * s);
+    }
   }
 }
 
@@ -520,6 +548,17 @@ mapCanvas.addEventListener('mousedown', e => {
     if (i >= 0) portals.splice(i, 1); else portals.push({ x, y });
     drawMap(); updateStatus(x, y); return;
   }
+  if (tool === 'tree' || tool === 'rock') {
+    const type = tool === 'tree' ? 0 : 1;
+    const i = mapProps.findIndex(p => p.x === x && p.y === y);
+    if (i >= 0) mapProps.splice(i, 1); else mapProps.push({ x, y, type });
+    drawMap(); updateStatus(x, y); return;
+  }
+  if (tool === 'move') {
+    const i = cvBuildings.findIndex(b => x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h);
+    if (i >= 0) { bDragI = i; bDragOX = x - cvBuildings[i].x; bDragOY = y - cvBuildings[i].y; }
+    return;
+  }
   painting = true;
   saveUndo();
   if (tool === 'pen' || tool === 'erase') {
@@ -537,6 +576,12 @@ mapCanvas.addEventListener('mousedown', e => {
 mapCanvas.addEventListener('mousemove', e => {
   const { x, y } = getTileCoord(e);
   lastMouse = { x, y };
+  if (bDragI >= 0) {
+    const b = cvBuildings[bDragI];
+    b.x = Math.max(0, Math.min(mapW - b.w, x - bDragOX));
+    b.y = Math.max(0, Math.min(mapH - b.h, y - bDragOY));
+    drawMap(); updateStatus(x, y); return;
+  }
   if (painting && (tool === 'pen' || tool === 'erase')) {
     placeTile(x, y); drawMap();
   }
@@ -545,6 +590,7 @@ mapCanvas.addEventListener('mousemove', e => {
 });
 
 mapCanvas.addEventListener('mouseup', e => {
+  if (bDragI >= 0) { bDragI = -1; return; }
   if (!painting) return;
   if (tool === 'rect' && rectStart) {
     const { x, y } = getTileCoord(e);
@@ -582,6 +628,9 @@ document.getElementById('btnFill').onclick = () => setTool('fill');
 document.getElementById('btnErase').onclick = () => setTool('erase');
 document.getElementById('btnSpawn').onclick = () => setTool('spawn');
 document.getElementById('btnPortal').onclick = () => setTool('portal');
+document.getElementById('btnMove').onclick = () => setTool('move');
+document.getElementById('btnTree').onclick = () => setTool('tree');
+document.getElementById('btnRock').onclick = () => setTool('rock');
 
 function setTool(t) {
   tool = t;
@@ -704,6 +753,7 @@ document.getElementById('btnWorldLink').onclick = () => {
   if (spawn) map.spawn = [spawn.x, spawn.y];
   if (portals.length) map.portals = portals.map(p => [p.x, p.y]);
   if (cvBuildings.length) map.buildings = cvBuildings.map(b => ({ e: b.e, x: b.x, y: b.y, w: b.w, h: b.h }));
+  if (mapProps.length) map.props = mapProps.map(p => [p.x, p.y, p.type]);
   // esperienze + variante + tileset dal builder (localStorage)
   let e = [], v = 0, tset = '';
   try {
@@ -979,14 +1029,6 @@ document.getElementById('btnGenCode').onclick = () => {
   alert('index.html scaricato!\\nQuesto file + la cartella tiles/ = il tuo portfolio pronto da pubblicare.');
 };
 
-// ══ TEST IN GAME (apre in nuova tab) ══
-document.getElementById('btnTestGame').onclick = () => {
-  const html = buildGameHTML();
-  const blob = new Blob([html], { type: 'text/html' });
-  const url = URL.createObjectURL(blob);
-  window.open(url, '_blank');
-};
-
 // ══ KEYBOARD SHORTCUTS ══
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
@@ -1019,6 +1061,7 @@ function loadEditorMap() {
     });
   }
   cvBuildings = (d.buildings || []).map(b => ({ e: b.e, x: b.x, y: b.y, w: b.w || 9, h: b.h || 6, kind: b.kind || (b.e && b.e.kind) || 'work' }));
+  mapProps = (d.props || []).map(p => ({ x: p[0], y: p[1], type: p[2] }));
   if (d.spawn && d.spawn.length === 2) spawn = { x: d.spawn[0], y: d.spawn[1] };
   activeLayerIdx = 0;
   document.getElementById('statusBar').textContent =
