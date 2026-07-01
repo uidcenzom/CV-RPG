@@ -255,7 +255,7 @@ function makeBuilding(e,i,rng){
     name: nm.length>20?nm.slice(0,19)+'…':nm, kind:e.kind, exp:e, x:0, y:0,
     w:BW+boost, h:BH+(boost>=2?1:0),
     color:st.color, colorDim:st.colorDim, colorRgb:st.colorRgb,
-    wallStyle:rng.pick([0,1,3]), roofIdx:st.roofIdx,   // texture muro variata
+    wallStyle:rng.pick([0,1,2]), roofIdx:st.roofIdx,   // solo stili di legno lisci (senza finestre)
     projects:[{num:String(i+1).padStart(3,'0'),type:st.label,name:String(e.title||e.organization||''),desc:buildDesc(e),tags:Array.isArray(e.tags)?e.tags:[],link:e.link||''}]
   };
 }
@@ -496,30 +496,17 @@ function prerenderBuildings(){
 
     const stX=b.wallStyle*96; // style X offset in Walls.png
 
-    // ── Muri PIENI: campiona lo strip di muro solido (niente centro trasparente) ──
-    for(let row=0;row<b.h;row++){
-      for(let col=0;col<b.w;col++){
-        const sx=stX+16+(((col+row)%3)*16), sy=208; // striscia di muro pieno
-        cx.drawImage(IMG.bwalls,sx,sy,16,16, ovX+col*TILE, roofH+row*TILE, TILE,TILE);
-      }
+    // ── Muri PIENI e UNIFORMI (un solo tile ripetuto, niente finestre) ──
+    const wsx=stX+32, wsy=214;   // tile di muro pieno liscio
+    for(let row=0;row<b.h;row++)for(let col=0;col<b.w;col++){
+      cx.drawImage(IMG.bwalls,wsx,wsy,16,16, ovX+col*TILE, roofH+row*TILE, TILE,TILE);
     }
 
-    // ── Finestre (finestra blu di Props: 48,64,32,36), griglia regolare, dentro il tile ──
+    // ── Porta al centro in basso (con vano scuro) ──
     const dc=Math.floor(b.w/2);
-    const winW=Math.round(TILE*0.62), winH=Math.round(TILE*0.72);
-    for(let row=1; row<b.h-1; row+=2){
-      for(let col=1; col<b.w-1; col+=2){
-        if(row>=b.h-2 && Math.abs(col-dc)<=1) continue; // evita l'area della porta
-        cx.drawImage(IMG.bprops,48,64,32,36,
-          ovX+col*TILE+(TILE-winW)/2, roofH+row*TILE+(TILE-winH)/2, winW,winH);
-      }
-    }
-
-    // ── Porta (Door2: 32,20,32,44) ──
     const doorW=TILE*2, doorH=TILE*2.5;
-    cx.fillStyle='#0a0808'; cx.fillRect(ovX+dc*TILE+4, roofH+bh-doorH*0.7, doorW-8, doorH*0.7); // vano scuro
-    cx.drawImage(IMG.bprops,32,20,32,44,
-      ovX+dc*TILE, roofH+bh-doorH, doorW,doorH);
+    cx.fillStyle='#0a0808'; cx.fillRect(ovX+dc*TILE+4, roofH+bh-doorH*0.7, doorW-8, doorH*0.7);
+    cx.drawImage(IMG.bprops,32,20,32,44, ovX+dc*TILE, roofH+bh-doorH, doorW,doorH);
 
     // ── Roof (procedural, a falde, colorato per tipo: studi/lavoro/progetti) ──
     const rc=b.colorRgb.split(',').map(Number);
